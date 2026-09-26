@@ -269,15 +269,13 @@ final class MorphoEngine {
 
     func toggleRecording() {
         exitReplay()
-        // Record is also the curtain call (spec §7), and arms the Stage to
-        // reopen by itself whenever the feed comes back.
-        session.stageArmed = true
-        if session.stagePhase == .curtain {
-            openStage()
-        }
         if session.isRecording {
-            // Stop: the feed keeps showing, but from here on it counts for
-            // nothing — the take is finalized and filed in the Reel (spec §9).
+            // Stop: the take is finalized and filed in the Reel (spec §9), and
+            // the Stage returns to the resting butterfly it showed before
+            // Record — disarmed, so it waits for the next Record to reopen.
+            session.stageArmed = false
+            if session.stagePhase == .opening { session.stagePhase = .live }
+            closeStage()
             session.isRecording = false
             let started = session.recordingStartedAt
             session.recordingStartedAt = nil
@@ -291,6 +289,12 @@ final class MorphoEngine {
                 session.lastExportURL = clip.url
             }
         } else {
+            // Record is also the curtain call (spec §7), and arms the Stage to
+            // reopen by itself whenever the feed comes back.
+            session.stageArmed = true
+            if session.stagePhase == .curtain {
+                openStage()
+            }
             // The writer itself opens on the first frame (see ingest).
             session.recordingStartedAt = .now
             session.isRecording = true

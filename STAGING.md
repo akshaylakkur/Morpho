@@ -75,7 +75,7 @@ remain and Scout on the outer display still exposes some of them).
 
 **The Reel and replay.** Stopping Record finalizes the take and files it in
 the Reel (`Documents/Reel`, MP4 + JPEG thumbnail, indexed by `reel.json`,
-persisted across launches). The feed keeps showing but no longer counts.
+persisted across launches). The Stage then closes back to the resting butterfly until the next Record.
 Tapping the thumbnail opens the newest take in an iOS-video-viewer-style
 page on the lower screen: Done (top-left) returns to the camera, the take's
 date and time sit up top, the video plays on black with a tap-to-pause and
