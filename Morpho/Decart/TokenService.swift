@@ -58,19 +58,51 @@ actor TokenService {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw TokenServiceError.badResponse
         }
-        // Expected edge-function payload: { "token": "...", "expires_in": 3600 }
-        struct Payload: Decodable {
-            let token: String
-            let expiresIn: TimeInterval?
-            enum CodingKeys: String, CodingKey {
-                case token
-                case expiresIn = "expires_in"
-            }
+        let payload = try JSONDecoder().decode(TokenPayload.self, from: data)
+        return EphemeralToken(value: payload.value, expiresAt: payload.expiry(now: .now))
+    }
+}
+
+/// Accepts Decart's own client-token shape (`{ "apiKey", "expiresAt" }`, what
+/// `POST /v1/client/tokens` returns) or the older edge-function shape
+/// (`{ "token", "expires_in" }`).
+nonisolated struct TokenPayload: Decodable, Sendable {
+    var value: String
+    var expiresAt: Date?
+    var expiresIn: TimeInterval?
+
+    /// Decart's default token lifetime when the response doesn't say.
+    static let defaultLifetime: TimeInterval = 60
+
+    private enum CodingKeys: String, CodingKey {
+        case apiKey, expiresAt, token
+        case expiresIn = "expires_in"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) {
+            value = apiKey
+        } else {
+            value = try container.decode(String.self, forKey: .token)
         }
-        let payload = try JSONDecoder().decode(Payload.self, from: data)
-        return EphemeralToken(
-            value: payload.token,
-            expiresAt: .now.addingTimeInterval(payload.expiresIn ?? 3300)
-        )
+        expiresIn = try container.decodeIfPresent(TimeInterval.self, forKey: .expiresIn)
+        if let raw = try container.decodeIfPresent(String.self, forKey: .expiresAt) {
+            expiresAt = Self.parseDate(raw)
+        } else if let seconds = try? container.decodeIfPresent(Double.self, forKey: .expiresAt) {
+            // Epoch seconds (or milliseconds).
+            expiresAt = Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
+        }
+    }
+
+    func expiry(now: Date) -> Date {
+        if let expiresAt { return expiresAt }
+        return now.addingTimeInterval(expiresIn ?? Self.defaultLifetime)
+    }
+
+    private static func parseDate(_ raw: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
     }
 }

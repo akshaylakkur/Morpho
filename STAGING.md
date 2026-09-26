@@ -110,16 +110,38 @@ Tools/voice.sh --selftest "phrase"  # synthesize a phrase with `say`, transcribe
   Real devices never see it. Keep `HostVoiceRelay.swift` and
   `Tools/MorphoVoice/.../VoiceServer.swift` wire formats in sync.
 
-## 1. Add the Decart SDK package (one time, in Xcode UI)
+## 1. The Lucy link (package added; live is opt-in)
 
-> File ▸ Add Package Dependencies… → `https://github.com/DecartAI/decart-ios`
-> → Up to Next Major from **0.7.0** → add product **DecartSDK** to the
-> **Morpho** target. (LiveKit comes in transitively.)
+`DecartSDK` 0.7.1 and `LiveKit` are linked in the project. Nothing connects
+to Decart on launch: the chip in the middle of the Deck's bottom bar picks
+the backend, and a session opens only while something is cast.
 
-That's it — `Decart/DecartLive.swift` is entirely wrapped in
-`#if canImport(DecartSDK)` and activates automatically once the package
-resolves. `MorphoEngine.start()` then prefers the live path whenever
-credentials exist.
+| Backend | What happens | Cost |
+|---|---|---|
+| **Simulated** | The on-device look (`SimulatedLucy`); targeted casts are staged, not rendered. | Free |
+| **Rehearsal** | The full live pipeline: frames conditioned to 1280×720 (or 720×1280) and uplinked, the combined prompt connected/updated with acks, transformed frames back through the downlink, billing meter and caps. A local stand-in plays Lucy: it tints each targeted thing where the tracker has it now. | Free |
+| **Live Lucy** | Decart Lucy 2.5 Realtime over LiveKit. Asks for confirmation every time; never restored on relaunch. | ~$0.02/s while a session is open |
+
+How an augmentation holds: Lucy keeps one prompt and applies it to every
+frame, following what the prompt names by its visible details. The director
+(`Lucy/LucyDirector.swift`) re-sends the whole scene on every change —
+`LucySceneComposer` folds the whole-scene cast and every targeted cast still
+in effect into one ≤ 750-character prompt — so each augmentation keeps
+applying, and keeps following its object, until it is removed.
+
+Cost guards: no session without a cast; closes 6 s after the last cast is
+cleared and 4 s after the camera stops (reopens when it returns); each
+session ends at 3 minutes (Resume in the console); live stops for the
+launch at 10 minutes (~$12). All in `LucyDirector.Policy`.
+
+The **Lucy Console** (chip menu) shows the exact prompt Lucy holds with its
+character count, ack state, fps both ways, session/launch meters and the
+estimated cost, a log, and Resend / Resume / End (plus Simulate Network Drop
+in Rehearsal).
+
+Files: `Lucy/` (directive + composer, link vocabulary, frame encoder,
+director, rehearsal transport), `Decart/DecartLucyTransport.swift` (live),
+`Views/Components/LucyLinkChip.swift`, `Views/LucyConsoleView.swift`.
 
 ## 2. Add credentials
 
@@ -149,8 +171,10 @@ Template:
 </plist>
 ```
 
-The edge function is expected to return `{ "token": "…", "expires_in": 3600 }`
-(see `Decart/TokenService.swift`).
+The token endpoint may return Decart's own shape `{ "apiKey", "expiresAt" }`
+(what `POST /v1/client/tokens` gives) or `{ "token", "expires_in" }`; with
+no lifetime, Decart's 60 s default is assumed (see `Decart/TokenService.swift`).
+A token is minted per session because Decart bakes it into the signaling URL.
 
 ## 3. Pre-event assets (all optional; graceful fallbacks exist)
 

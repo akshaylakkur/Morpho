@@ -99,8 +99,8 @@ struct StageView: View {
             }
         }
         // Reconnects refract the stage instead of freezing it (spec §7).
-        .blur(radius: session.connection == .reconnecting ? 9 : 0)
-        .animation(.easeInOut(duration: 0.3), value: session.connection)
+        .blur(radius: session.displayConnection == .reconnecting ? 9 : 0)
+        .animation(.easeInOut(duration: 0.3), value: session.displayConnection)
     }
 
     // MARK: Chrome
@@ -138,7 +138,7 @@ struct StageView: View {
             if let clip = engine.replay.clip {
                 ReplayBadge(clip: clip)
             } else {
-                ConnectionOrb(phase: session.connection)
+                ConnectionOrb(phase: session.displayConnection)
             }
             if session.isRecording, let startedAt = session.recordingStartedAt {
                 SessionTimerChip(startedAt: startedAt)

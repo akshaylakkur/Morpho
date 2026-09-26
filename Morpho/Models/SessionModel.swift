@@ -81,6 +81,8 @@ enum VideoSourceKind: String, CaseIterable, Equatable, Sendable {
 final class SessionModel {
     // MARK: Connection
     var connection: ConnectionPhase = .disconnected
+    /// The Lucy link: backend, session phase, applied prompt, meters (LucyDirector drives it).
+    var lucy = LucyLinkStatus()
 
     // MARK: Realms & casting
     var activeRealm: Realm?
@@ -173,6 +175,18 @@ final class SessionModel {
 
     func removeAugmentation(_ id: UUID) {
         augmentations.removeAll { $0.id == id }
+    }
+
+    /// What the connection orb shows: the Lucy session's state whenever a
+    /// transport is in use and a session is wanted, else the feed's.
+    var displayConnection: ConnectionPhase {
+        guard lucy.mode.usesTransport, connection != .disconnected else { return connection }
+        switch lucy.phase {
+        case .connecting, .queued: return .connecting
+        case .reconnecting: return .reconnecting
+        case .streaming: return lucy.promptState == .sending ? .generating : .connected
+        case .idle, .paused, .failed: return connection
+        }
     }
 
     /// True when anything at all is being applied to the feed.

@@ -51,11 +51,46 @@ struct LucyPromptSpec: Equatable, Sendable {
                 text = String(text[...lastPeriod])
             }
         }
-        // Lucy responds to outcomes, not prohibitions — rewrite common negative openers.
-        for negative in ["don't ", "do not ", "no ", "never ", "avoid ", "without "] where text.lowercased().hasPrefix(negative) {
-            text = "Keep the scene unchanged except the described edit. " + text
-            break
-        }
+        // Lucy responds to outcomes, not prohibitions.
+        text = Self.outcomePhrased(text)
         return LucyPromptSpec(editType: editType, prompt: text, confidence: confidence)
+    }
+
+    /// Rewrites prohibitions as outcomes: "Don't change the face." → "Keep
+    /// the face unchanged." Any other negative sentence ("No hats.") is
+    /// dropped, since naming the thing tends to summon it.
+    static func outcomePhrased(_ text: String) -> String {
+        let keepPattern = #"^(?:please\s+)?(?:don't|do not|never|avoid)\s+(?:changing|change|altering|alter|modifying|modify|touching|touch|editing|edit|affecting|affect)\s+(.+?)[.!]?$"#
+        let negativeOpeners = ["don't ", "do not ", "never ", "avoid ", "no ", "without ", "please don't ", "please do not "]
+        var kept: [String] = []
+        var sentences: [String] = []
+        // Dictation writes a typographic apostrophe ("don’t").
+        for sentence in LucySceneComposer.sentences(in: text.replacingOccurrences(of: "\u{2019}", with: "'")) {
+            // "Don't change the face but make the jacket red": the wish comes
+            // first, then the prohibition on its own.
+            let lowered = sentence.lowercased()
+            if negativeOpeners.contains(where: lowered.hasPrefix),
+               let but = sentence.range(of: " but ", options: .caseInsensitive) {
+                var wish = String(sentence[but.upperBound...]).trimmingCharacters(in: .whitespaces)
+                if !wish.hasSuffix(".") && !wish.hasSuffix("!") { wish += "." }
+                sentences.append(wish.prefix(1).uppercased() + wish.dropFirst())
+                sentences.append(String(sentence[..<but.lowerBound]) + ".")
+            } else {
+                sentences.append(sentence)
+            }
+        }
+        for sentence in sentences {
+            let lowered = sentence.lowercased()
+            if sentence.range(of: keepPattern, options: [.regularExpression, .caseInsensitive]) != nil {
+                let object = sentence.replacingOccurrences(of: keepPattern, with: "$1", options: [.regularExpression, .caseInsensitive])
+                kept.append("Keep \(object) unchanged.")
+            } else if negativeOpeners.contains(where: lowered.hasPrefix) {
+                continue
+            } else {
+                kept.append(sentence)
+            }
+        }
+        let result = kept.joined(separator: " ")
+        return result.isEmpty ? text : result
     }
 }

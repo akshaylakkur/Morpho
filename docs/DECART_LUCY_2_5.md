@@ -98,29 +98,26 @@ Doc errata: the Swift page writes `Models.realtime(.lucy-restyle-2)` (invalid Sw
 - Per second: lucy-2.5 $0.02/s standard, $0.04/s fast; vton-3.5 the same; restyle-2 $0.01/s. Usage arrives as `generationTick` events.
 - No documented rate limits or session cap beyond the token's `maxSessionDuration`. Fast mode needs SDK ≥ 0.7.1.
 
-## 6. Known gaps in Morpho's live path (fix when the package is added)
+## 6. Morpho's live path — status (2026-09-26)
 
-`DecartLive.swift` is inside `#if canImport(DecartSDK)` and the package has never been added, so none of this has been compiled.
+The package is linked (DecartSDK 0.7.1, LiveKit 2.17) and the old `DecartLive.swift` draft is replaced by `Decart/DecartLucyTransport.swift` behind `Lucy/LucyDirector.swift`. Compiled and unit-tested against a recording transport and the Rehearsal stand-in; **not yet run against the real API**.
 
-| Where | Problem | Fix |
-|---|---|---|
-| DecartLive.swift imports | `LocalVideoTrack` is LiveKit's | add `@preconcurrency import LiveKit` |
-| `DecartClient(configuration:)` | wrong label | `DecartClient(decartConfiguration:)` |
-| `Models.realtime(.lucy_2_5)` | no such case | `.lucy2_5` |
-| `initialPrompt: session.activeRealm.map { … }` | passes an optional; omits `enrich` | `… ?? DecartPrompt(text: "")`, pass `enrich: session.enhance` |
-| `LocalVideoTrack.createCameraTrack()` | position unspecified, landscape, no mirroring | `CameraCaptureOptions(position:dimensions:fps:)` + `MirroringVideoProcessor(mode: .auto, cameraPosition: .front)` |
-| `_ = try await manager.connect(...)` and `for await _ in remoteStreamUpdates` | remote stream discarded; nothing renders the remote `videoTrack` | keep the returned stream, expose the track on `MorphoEngine`, render with `RTCMLVideoViewWrapper` in `StageView`, rebind on each `remoteStreamUpdates` value |
-| `applyLiveState` from stream tasks | mutates `session` off the main actor | hop to `@MainActor` |
-| `prompt.enrich = session.enhance` | `enrich` is `let` | pass in the initializer |
-| `context.manager?.setPrompt(prompt)` | method is `async throws`; result ignored | `try await`, handle ack timeout / "superseded" / websocket errors |
-| state switch | drops `.generating`, `.idle`, `.error` | map all seven cases onto `ConnectionPhase` |
-| teardown | never stops the track or disconnects | `videoTrack.stop()`, `manager.disconnect()` on stop |
-| TokenService payload | expects `{ token, expires_in }` | Decart returns `{ apiKey, expiresAt }`; accept that (or have the edge function reshape) and parse `expiresAt` |
-| TokenService fallback TTL 3300 s | Decart's default is **60 s** | mint with explicit `expiresIn` ≥ session length and `allowedModels: ["lucy-2.5"]`; derive cache expiry from `expiresAt` |
-| `LucyPromptSpec.sanitized()` | leaves the prohibition in place, only prefixes a keep-clause | strip or rewrite negative phrasing |
-| `Alchemist` templates | `style` and `vfx` don't match the model page; no awareness of an attached reference image | align templates; pass whether a reference image is set so the prompt says "from the reference image" |
+| Former gap | Now |
+|---|---|
+| LiveKit types not imported | `@preconcurrency import LiveKit` |
+| `DecartClient(configuration:)`, `.lucy_2_5` | `DecartClient(decartConfiguration:)`, `Models.realtime(.lucy2_5)` |
+| optional `initialPrompt`, no `enrich` | the composed directive, `enrich: session.enhance`, reference image included |
+| camera track | a LiveKit buffer track fed by `LucyFrameEncoder` (aspect-filled 1280×720 / 720×1280, ≤ 30 fps, drop-not-queue) from whatever source the engine has — tether, camera, or clip; primed with one frame before publish |
+| remote stream discarded | `LucyOutputTap` renders the remote track into CGImages for the engine; rebound on every `remoteStreamUpdates` value |
+| state mutated off the main actor | events handled on the main actor |
+| `setPrompt` ignored | awaited; serialized in the director (newest wins); "superseded" tolerated; failures shown in the console |
+| states dropped | all seven mapped (connected/generating → streaming, reconnecting, error/disconnected → session ended → retry ×2) |
+| no teardown | track stopped and manager disconnected on close |
+| token payload / 3300 s TTL | accepts `{apiKey, expiresAt}` and `{token, expires_in}`; 60 s default |
+| negative phrasing only prefixed | rewritten as outcomes ("Don't change X" → "Keep X unchanged."), other negatives dropped |
+| style / VFX templates | aligned to "Change the style of the video to …" / "Add … to …" |
 
-What's already right: the 750-char / 120-word limit, the eight edit families, resending the reference image on every `setPrompt`, and the guide's four-question structure in the Alchemist instructions.
+Open questions for the first live run: whether `generationTick` is cumulative seconds (assumed; it drives the meter and caps), and the real connect-to-first-frame latency.
 
 ## 7. The Morpho tether and the live path
 

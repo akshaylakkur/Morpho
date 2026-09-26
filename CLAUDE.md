@@ -22,3 +22,7 @@ Bitrig-built, Duo simulator). Voice → Lucy 2.5 prompt → transformed feed.
   wire formats in sync.
 - Keep `Alchemist/HostVoiceRelay.swift` and
   `Tools/MorphoVoice/.../VoiceServer.swift` wire formats in sync.
+- Nothing may open a billed Lucy session implicitly: `LucyDirector` opens
+  sessions only while something is cast, and only in the mode the person
+  picked; Live is confirmed each time and never restored from disk. Test
+  pipeline changes in Rehearsal.

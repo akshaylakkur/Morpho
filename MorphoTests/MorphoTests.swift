@@ -28,8 +28,7 @@ struct GuardrailTests {
             prompt: "don't change the face but make the jacket red",
             confidence: 1
         ).sanitized()
-        #expect(!spec.prompt.lowercased().hasPrefix("don't"))
-        #expect(spec.prompt.contains("Keep the scene unchanged except"))
+        #expect(spec.prompt == "Make the jacket red. Keep the face unchanged.")
     }
 
     @Test func cleanPromptPassesThroughUnchanged() {

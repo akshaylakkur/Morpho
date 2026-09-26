@@ -107,6 +107,8 @@ struct DeckView: View {
                 if let clip = session.reel.first { engine.enterReplay(clip) }
             }
             Spacer()
+            LucyLinkChip()
+            Spacer()
             RecordButton(isRecording: session.isRecording) {
                 engine.toggleRecording()
             }

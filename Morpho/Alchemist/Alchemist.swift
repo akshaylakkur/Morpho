@@ -58,8 +58,8 @@ final class Alchemist {
     - replace: "Replace [original] with [new] …"
     - remove: "Remove [object] from [location] …"
     - background: "Change the background to [scene] …"
-    - style: "Transform the entire scene into [style] …"
-    - vfx: weather/particles/atmosphere added over the scene
+    - style: "Change the style of the video to [style] …"
+    - vfx: "Add [effect] to [location] …" (weather, particles, atmosphere)
     - characterSwap: "Replace the character in the video with [description] …"
     - attribute: "Change [object] to [color/material/lighting] …"
     """

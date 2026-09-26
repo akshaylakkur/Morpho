@@ -29,6 +29,11 @@
 		EB46EA29305E09AC007858F4 /* MorphoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MorphoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXBuildFile section */
+		D3CA0005305E09AB00ABCDEF /* DecartSDK in Frameworks */ = {isa = PBXBuildFile; productRef = D3CA0003305E09AB00ABCDEF /* DecartSDK */; };
+		D3CA0006305E09AB00ABCDEF /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = D3CA0004305E09AB00ABCDEF /* LiveKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		EB46EA14305E09AB007858F4 /* Morpho */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -51,6 +56,8 @@
 		EB46EA0F305E09AB007858F4 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				D3CA0005305E09AB00ABCDEF /* DecartSDK in Frameworks */,
+				D3CA0006305E09AB00ABCDEF /* LiveKit in Frameworks */,
 			);
 		};
 		EB46EA1C305E09AC007858F4 /* Frameworks */ = {
@@ -103,6 +110,10 @@
 				EB46EA14305E09AB007858F4 /* Morpho */,
 			);
 			name = Morpho;
+			packageProductDependencies = (
+				D3CA0003305E09AB00ABCDEF /* DecartSDK */,
+				D3CA0004305E09AB00ABCDEF /* LiveKit */,
+			);
 			productName = Morpho;
 			productReference = EB46EA12305E09AB007858F4 /* Morpho.app */;
 			productType = "com.apple.product-type.application";
@@ -181,6 +192,10 @@
 			);
 			mainGroup = EB46EA09305E09AB007858F4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D3CA0001305E09AB00ABCDEF /* XCRemoteSwiftPackageReference "decart-ios" */,
+				D3CA0002305E09AB00ABCDEF /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = EB46EA13305E09AB007858F4 /* Products */;
 			projectDirPath = "";
@@ -560,6 +575,37 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+/* Begin XCRemoteSwiftPackageReference section */
+		D3CA0001305E09AB00ABCDEF /* XCRemoteSwiftPackageReference "decart-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/DecartAI/decart-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.7.1;
+			};
+		};
+		D3CA0002305E09AB00ABCDEF /* XCRemoteSwiftPackageReference "client-sdk-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D3CA0003305E09AB00ABCDEF /* DecartSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3CA0001305E09AB00ABCDEF /* XCRemoteSwiftPackageReference "decart-ios" */;
+			productName = DecartSDK;
+		};
+		D3CA0004305E09AB00ABCDEF /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3CA0002305E09AB00ABCDEF /* XCRemoteSwiftPackageReference "client-sdk-swift" */;
+			productName = LiveKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = EB46EA0A305E09AB007858F4 /* Project object */;
 	validationLevel = 1;

@@ -1,0 +1,78 @@
+{
+  "originHash" : "790858672a60dcdd49ea41fd1b070911188dd0d59d46c5f07f4dc19a9b8f3043",
+  "pins" : [
+    {
+      "identity" : "async-extensions",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/async-extensions.git",
+      "state" : {
+        "revision" : "3088474141debc75b78257a0db28adf734bcea0f",
+        "version" : "4.4.0"
+      }
+    },
+    {
+      "identity" : "client-sdk-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/livekit/client-sdk-swift",
+      "state" : {
+        "revision" : "f07831a7f06bca9e2fc2e136db591b7b42f16d8d",
+        "version" : "2.17.0"
+      }
+    },
+    {
+      "identity" : "decart-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/DecartAI/decart-ios",
+      "state" : {
+        "revision" : "94b29933d7b41c4350a0f32be97931b64e0e3d86",
+        "version" : "0.7.1"
+      }
+    },
+    {
+      "identity" : "dispatch-timer",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/dispatch-timer.git",
+      "state" : {
+        "revision" : "9b03fa83669f6e01ee2135af8ab9105cc2b9b744",
+        "version" : "3.0.2"
+      }
+    },
+    {
+      "identity" : "livekit-uniffi-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/livekit/livekit-uniffi-xcframework.git",
+      "state" : {
+        "revision" : "7a9bf91b1601d5c408ae0cac7dc2047b5a4f615e",
+        "version" : "0.1.9"
+      }
+    },
+    {
+      "identity" : "synchronized",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/synchronized.git",
+      "state" : {
+        "revision" : "1a9cde1ffab5db3fe10b1a889c18312c9df510dc",
+        "version" : "4.0.2"
+      }
+    },
+    {
+      "identity" : "webrtc-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/livekit/webrtc-xcframework.git",
+      "state" : {
+        "revision" : "c73deceaddd9c07293871ae28f24d4326cc86d62",
+        "version" : "150.7871.2"
+      }
+    },
+    {
+      "identity" : "websocket-apple",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/websocket-apple.git",
+      "state" : {
+        "revision" : "fc1e388b9318546a9680ce083d5f3ddcff3805a3",
+        "version" : "4.1.2"
+      }
+    }
+  ],
+  "version" : 3
+}

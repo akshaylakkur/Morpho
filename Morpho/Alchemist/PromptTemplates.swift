@@ -54,7 +54,7 @@ enum PromptTemplates {
         // Default: treat it as a full restyle.
         return LucyPromptSpec(
             editType: .style,
-            prompt: "Transform the entire scene into \(subject), applying the look consistently to every surface. Keep the subject's pose, framing, and movement identical.",
+            prompt: "Change the style of the video to \(subject), applied consistently to every surface. Keep the subject's pose, framing, and movement identical.",
             confidence: 0.4
         )
     }
