@@ -250,6 +250,16 @@ final class LucyDirector {
         openWhenFrameReady()
     }
 
+    /// Back to the original feed: close any session now (no idle grace)
+    /// and drop whatever Lucy last sent.
+    func stopAll() async {
+        latestOutput = nil
+        await closeSession(reason: "Back to original")
+        status.phase = .idle
+        status.promptState = .none
+        retries = 0
+    }
+
     func endSession() async {
         await closeSession(reason: "Ended by hand")
         status.phase = .idle

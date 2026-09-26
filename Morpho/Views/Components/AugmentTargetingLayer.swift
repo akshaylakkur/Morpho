@@ -4,8 +4,9 @@
 //
 //  Click-and-augment on the Deck's viewfinder. Two ways in:
 //    • press and hold an outlined object → that region locks;
-//    • drag a box around anything → on release the box locks (snapping to a
-//      detected region it mostly covers).
+//    • drag a box around anything and hold still (or let go) → exactly that
+//      box locks, a manual crop described by its color and place.
+//  The Deck never shows the edits themselves; they appear on the Stage.
 //  Either way the viewfinder holds the frame the target came from, the mic
 //  opens, and what's said until the speaker goes quiet becomes that target's
 //  augmentation. Nothing listens before a target is locked. A
@@ -26,6 +27,9 @@ struct AugmentTargetingLayer: View {
     @State private var press = PressTracker()
     @State private var marquee: CGRect?
     @State private var lockTask: Task<Void, Never>?
+    @State private var marqueeHoldTask: Task<Void, Never>?
+    /// Where the dragging finger last settled; moving past `marqueeSettle` restarts the hold.
+    @State private var marqueeAnchor: CGPoint = .zero
 
     /// How long a still finger takes to lock the region under it.
     static let holdDuration: TimeInterval = 0.35
@@ -33,6 +37,10 @@ struct AugmentTargetingLayer: View {
     static let holdSlop: CGFloat = 12
     /// Smaller boxes are treated as a tap.
     static let minimumMarquee: CGFloat = 24
+    /// A dragged box locks once the finger rests this long.
+    static let marqueeHoldDuration: TimeInterval = 0.5
+    /// Jitter under this doesn't count as moving the box.
+    static let marqueeSettle: CGFloat = 5
 
     private var regions: [DetectedRegion] { segmentation?.regions ?? [] }
 
@@ -50,12 +58,6 @@ struct AugmentTargetingLayer: View {
                         .transition(.opacity)
                 }
 
-                // Hand-drawn targets that matched no region aren't in the
-                // detection overlay, so their outlines are drawn here.
-                ForEach(session.augmentations.filter { !$0.target.isDetected }) { augmentation in
-                    ManualAugmentationOutline(augmentation: augmentation, display: display)
-                }
-
                 if let marquee {
                     MarqueeBox(rect: marquee)
                 }
@@ -67,7 +69,9 @@ struct AugmentTargetingLayer: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .frame(width: container.width, height: container.height)
+            // Top-leading, so the marquee's offsets are in the same space as the
+            // finger; centered, the box drew away from the cursor mid-drag.
+            .frame(width: container.width, height: container.height, alignment: .topLeading)
             .contentShape(Rectangle())
             .gesture(pressGesture(display: display))
             .simultaneousGesture(
@@ -87,7 +91,7 @@ struct AugmentTargetingLayer: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Viewfinder")
-        .accessibilityHint("Press and hold an outlined object, or drag a box around one, then say what to change")
+        .accessibilityHint("Press and hold an outlined object, or drag a box around anything and hold, then say what to change")
     }
 
     // MARK: Gesture: hold to lock a region, drag to box one, tap outside to cancel
@@ -111,10 +115,16 @@ struct AugmentTargetingLayer: View {
                     marquee = CGRect(origin: value.startLocation, size: .zero)
                         .union(CGRect(origin: value.location, size: .zero))
                         .standardized
+                    // Holding the box still locks it and opens the mic.
+                    if hypot(value.location.x - marqueeAnchor.x, value.location.y - marqueeAnchor.y) > Self.marqueeSettle {
+                        marqueeAnchor = value.location
+                        scheduleMarqueeLock(display: display)
+                    }
                 }
             }
             .onEnded { value in
                 lockTask?.cancel()
+                marqueeHoldTask?.cancel()
                 let finished = press
                 let box = marquee
                 press = PressTracker()
@@ -123,11 +133,8 @@ struct AugmentTargetingLayer: View {
                 if finished.locked {
                     session.targetingHoldActive = false
                     conductor.endTargetingHold()
-                } else if finished.moved {
-                    if let box, box.width >= Self.minimumMarquee, box.height >= Self.minimumMarquee,
-                       let target = engine.lockTarget(manualRect: TargetGeometry.normalizedRect(box, in: display), snappingTo: regions) {
-                        conductor.beginTargeting(target)
-                    }
+                } else if finished.moved, let box {
+                    lockMarquee(box, display: display)
                 } else if session.targeting.isActive,
                           !session.targeting.holdsFrame || !targetContains(value.location, display: display) {
                     conductor.cancelTargeting()
@@ -148,6 +155,29 @@ struct AugmentTargetingLayer: View {
             session.targetingHoldActive = true
             conductor.beginTargeting(target)
         }
+    }
+
+    private func scheduleMarqueeLock(display: CGRect) {
+        marqueeHoldTask?.cancel()
+        marqueeHoldTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.marqueeHoldDuration))
+            guard !Task.isCancelled, press.moved, !press.locked, let box = marquee,
+                  lockMarquee(box, display: display)
+            else { return }
+            press.locked = true
+            marquee = nil
+            session.targetingHoldActive = true
+        }
+    }
+
+    /// Locks exactly the drawn box (no snapping) and opens the mic.
+    @discardableResult
+    private func lockMarquee(_ box: CGRect, display: CGRect) -> Bool {
+        guard box.width >= Self.minimumMarquee, box.height >= Self.minimumMarquee,
+              let target = engine.lockTarget(manualRect: TargetGeometry.normalizedRect(box, in: display))
+        else { return false }
+        conductor.beginTargeting(target)
+        return true
     }
 
     private func targetContains(_ point: CGPoint, display: CGRect) -> Bool {
@@ -220,43 +250,6 @@ private struct TargetSpotlight: View {
         }
         let rect = TargetGeometry.displayRect(target.boundingBox, in: display)
         return Path(roundedRect: rect, cornerRadius: min(rect.width, rect.height) * 0.12)
-    }
-}
-
-/// A fixed patch of the frame carrying a cast, with its title.
-private struct ManualAugmentationOutline: View {
-    let augmentation: TargetedAugmentation
-    let display: CGRect
-
-    var body: some View {
-        let rect = TargetGeometry.displayRect(augmentation.target.boundingBox, in: display)
-        let radius = min(rect.width, rect.height) * 0.12
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: radius)
-                .stroke(.black.opacity(0.35), lineWidth: 4.5)
-                .frame(width: rect.width, height: rect.height)
-                .offset(x: rect.minX, y: rect.minY)
-            RoundedRectangle(cornerRadius: radius)
-                .stroke(Theme.iridescent, lineWidth: 2.5)
-                .frame(width: rect.width, height: rect.height)
-                .offset(x: rect.minX, y: rect.minY)
-
-            HStack(spacing: 5) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 9, weight: .bold))
-                Text(augmentation.shortTitle)
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(Theme.iridescent)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.black.opacity(0.55), in: .capsule)
-            .fixedSize()
-            .offset(x: max(rect.minX, 8), y: max(rect.minY - 30, 8))
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 

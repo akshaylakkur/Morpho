@@ -122,10 +122,11 @@ enum PromptTemplates {
     }
 
     /// "Person" → "the person"; "Coffee Mug" → "the coffee mug"; unknown → "the selected object".
+    /// A descriptor ("dark gray object in the lower left of the frame") keeps its casing.
     static func anchorPhrase(for subject: String) -> String {
         let cleaned = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty, cleaned != "Selection", cleaned != "Object" else { return "the selected object" }
-        return "the " + cleaned.lowercased()
+        return "the " + (cleaned.contains(" of the frame") ? cleaned : cleaned.lowercased())
     }
 
     /// The words after the first marker found ("look like a" → "ninja"), trimmed of trailing filler.

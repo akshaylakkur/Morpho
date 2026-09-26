@@ -91,6 +91,57 @@ extension Realm {
         ),
     ]
 
+    /// One-tap surroundings on the Deck. Each goes straight to Lucy (no
+    /// rewriting) and swaps only what's behind the subject, so targeted casts
+    /// keep applying on top.
+    static let backdrops: [Realm] = [
+        Realm(
+            id: "alpine-valley",
+            name: "Valley",
+            symbol: "mountain.2.fill",
+            editType: .background,
+            prompt: "Change the background to a lush green alpine valley in warm afternoon light: rolling meadows dotted with wildflowers, a winding silver river, pine forests on the slopes, and snow-capped peaks under a clear blue sky. Soft golden sunlight falls on the subject from the side. Keep the subject's face, clothing, pose, and movement unchanged.",
+            accent: Color(red: 0.3, green: 0.72, blue: 0.4),
+            previewAssetName: "backdrop-alpine-valley"
+        ),
+        Realm(
+            id: "moon-surface",
+            name: "Moon",
+            symbol: "moon.fill",
+            editType: .background,
+            prompt: "Change the background to the surface of the Moon: gray powdery regolith with scattered craters and rocks, a pitch-black sky full of stars, and the blue Earth hanging low on the horizon. Hard white sunlight from one side casts crisp shadows across the subject. Keep the subject's face, clothing, pose, and movement unchanged.",
+            accent: Color(red: 0.55, green: 0.58, blue: 0.68),
+            previewAssetName: "backdrop-moon-surface"
+        ),
+        Realm(
+            id: "tropical-beach",
+            name: "Beach",
+            symbol: "beach.umbrella.fill",
+            editType: .background,
+            prompt: "Change the background to a bright tropical beach at midday: turquoise water with gentle waves, white sand, and leaning palm trees swaying in a light breeze under a clear blue sky. Warm sunlight falls on the subject from above. Keep the subject's face, clothing, pose, and movement unchanged.",
+            accent: Color(red: 0.2, green: 0.75, blue: 0.8),
+            previewAssetName: "backdrop-tropical-beach"
+        ),
+        Realm(
+            id: "snowy-forest",
+            name: "Snow",
+            symbol: "snowflake",
+            editType: .background,
+            prompt: "Change the background to a quiet snowy pine forest: tall evergreens heavy with fresh snow, soft flakes drifting down through the air, and pale blue winter light with a faint mist between the trees. Cool light falls on the subject. Keep the subject's face, clothing, pose, and movement unchanged.",
+            accent: Color(red: 0.55, green: 0.75, blue: 0.95),
+            previewAssetName: "backdrop-snowy-forest"
+        ),
+        Realm(
+            id: "neon-city",
+            name: "Neon City",
+            symbol: "building.2.fill",
+            editType: .background,
+            prompt: "Change the background to a rain-soaked city street at night: glowing neon signs in pink and cyan, tall towers fading into haze, and wet pavement reflecting the colored light. Neon glow rims the subject from behind. Keep the subject's face, clothing, pose, and movement unchanged.",
+            accent: Color(red: 0.9, green: 0.3, blue: 0.75),
+            previewAssetName: "backdrop-neon-city"
+        ),
+    ]
+
     static func realm(withID id: String) -> Realm? {
         all.first { $0.id == id }
     }

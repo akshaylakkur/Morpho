@@ -41,7 +41,8 @@ struct DeckView: View {
             // The viewfinder is the very same Stage the upper screen shows,
             // butterfly, reveal, and all. It fills the entire lower screen;
             // the controls float on top of the feed.
-            StageView()
+            // Edits are the Stage's alone: the controller always shows the untouched camera.
+            StageView(showsEdits: false)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // Autodetection: segmented regions and their names ride the feed.
@@ -59,7 +60,6 @@ struct DeckView: View {
                 DetectionOverlay(
                     segmentation: segmentation,
                     zoom: session.zoom,
-                    augmentedRegions: engine.augmentationsByRegion(),
                     lockedRegionID: session.targeting.target?.regionID
                 )
                 .transition(.opacity)
@@ -121,15 +121,24 @@ struct DeckView: View {
     }
 
     private var controlBar: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .bottom) {
             RecentTakeButton(clip: session.reel.first) {
                 if let clip = session.reel.first { engine.enterReplay(clip) }
             }
             Spacer()
             LucyLinkChip()
+                .padding(.bottom, 14)
             Spacer()
-            RecordButton(isRecording: session.isRecording) {
-                engine.toggleRecording()
+            VStack(alignment: .trailing, spacing: 16) {
+                // Background templates, right above Record.
+                BackdropPicker()
+                HStack(spacing: 14) {
+                    // Back to the untouched feed, left of Record.
+                    RevertButton()
+                    RecordButton(isRecording: session.isRecording) {
+                        engine.toggleRecording()
+                    }
+                }
             }
         }
         .padding(.horizontal, 24)

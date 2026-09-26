@@ -18,6 +18,9 @@ struct StageView: View {
 
     /// Compact chrome for Scout Mode.
     var compact = false
+    /// False on the Deck: the controller shows the untouched camera only —
+    /// no Lucy output, Rift Slider, or casting chrome. Edits live on the Stage.
+    var showsEdits = true
 
     @State private var stillFlash = false
 
@@ -37,7 +40,7 @@ struct StageView: View {
 
                 feed(in: proxy.size, foldFraction: foldFraction, axis: riftAxis)
 
-                if session.stagePhase == .live, !engine.replay.isActive {
+                if showsEdits, session.stagePhase == .live, !engine.replay.isActive {
                     // Rift Slider: parked at 100% transformed until a judge drags it.
                     RiftSlider(
                         fraction: $session.riftFraction,
@@ -51,10 +54,12 @@ struct StageView: View {
                 }
 
                 // Transmutation sweep fires from the fold outward on every cast.
-                TransmutationSweep(
-                    trigger: session.sweepTrigger,
-                    originFraction: foldFraction ?? 0.5
-                )
+                if showsEdits {
+                    TransmutationSweep(
+                        trigger: session.sweepTrigger,
+                        originFraction: foldFraction ?? 0.5
+                    )
+                }
 
                 // A loaded take plays here instead of the feed (spec §9).
                 if engine.replay.isActive {
@@ -95,7 +100,7 @@ struct StageView: View {
             // Nothing here reads the frames while the curtain is down, so the
             // Stage doesn't re-render 30× a second behind it.
             if session.stagePhase != .curtain {
-                StageFeed(size: size, axis: axis)
+                StageFeed(size: size, axis: axis, showsEdits: showsEdits)
             }
         }
         // Reconnects refract the stage instead of freezing it (spec §7).
@@ -125,11 +130,13 @@ struct StageView: View {
             Spacer()
 
             // A targeted cast shows its words in the Deck's transcript box instead.
-            IncantationOverlay(
-                transcript: session.micMode == .targeting ? "" : session.liveTranscript,
-                compiled: session.compiledPreview
-            )
-            .padding(.bottom, compact ? 14 : 26)
+            if showsEdits {
+                IncantationOverlay(
+                    transcript: session.micMode == .targeting ? "" : session.liveTranscript,
+                    compiled: session.compiledPreview
+                )
+                .padding(.bottom, compact ? 14 : 26)
+            }
         }
     }
 
@@ -170,13 +177,14 @@ private struct StageFeed: View {
 
     let size: CGSize
     let axis: Axis
+    var showsEdits = true
 
     var body: some View {
         ZStack {
             if let original = engine.originalFrame {
                 frameImage(original)
             }
-            if let transformed = engine.transformedFrame {
+            if showsEdits, let transformed = engine.transformedFrame {
                 frameImage(transformed)
                     .mask(alignment: axis == .vertical ? .top : .leading) {
                         Rectangle()

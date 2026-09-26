@@ -124,7 +124,7 @@ final class Alchemist {
     /// label anchors it. Falls back to the targeted templates like everything else.
     func compileTargeted(_ rawSpeech: String, target: AugmentationTarget, frame: CGImage?, crop: CGImage?) async -> LucyPromptSpec {
         guard isAvailable else {
-            return PromptTemplates.compileTargeted(rawSpeech, subject: target.label)
+            return PromptTemplates.compileTargeted(rawSpeech, subject: target.promptSubject)
         }
         let acceptsImages = SystemLanguageModel.default.capabilities.contains(.vision)
         let context = frame.flatMap { TargetCropper.downscaled($0, longSide: Self.contextLongSide) }
@@ -132,7 +132,7 @@ final class Alchemist {
             return try await withTimeout(seconds: 6) { [self] in
                 let session = self.targetedSession ?? LanguageModelSession(instructions: Self.targetedInstructions)
                 self.targetedSession = session
-                let label = target.label.isEmpty ? "object" : target.label
+                let label = target.promptSubject.isEmpty ? "object" : target.promptSubject
                 let prompt: Prompt
                 if acceptsImages, let crop, let context {
                     prompt = Prompt {
@@ -162,7 +162,7 @@ final class Alchemist {
         } catch {
             // A session that errored or timed out is cheap to replace next time.
             targetedSession = nil
-            return PromptTemplates.compileTargeted(rawSpeech, subject: target.label)
+            return PromptTemplates.compileTargeted(rawSpeech, subject: target.promptSubject)
         }
     }
 

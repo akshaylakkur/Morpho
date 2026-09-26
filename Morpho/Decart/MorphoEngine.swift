@@ -316,10 +316,10 @@ final class MorphoEngine {
         )
     }
 
-    /// Lock a hand-drawn rectangle. It snaps to the detected region it mostly
-    /// covers, so the augmentation can follow that region; otherwise it stays
-    /// a fixed patch of the frame.
-    func lockTarget(manualRect rect: CGRect, snappingTo regions: [DetectedRegion]) -> AugmentationTarget? {
+    /// Lock a hand-drawn rectangle. It snaps to a detected region it mostly
+    /// covers when `regions` are given (so the augmentation can follow that
+    /// region); otherwise it stays exactly the patch that was drawn.
+    func lockTarget(manualRect rect: CGRect, snappingTo regions: [DetectedRegion] = []) -> AugmentationTarget? {
         guard let frame = heldFrame ?? originalFrame, rect.width > 0.02, rect.height > 0.02 else { return nil }
         if let match = TargetGeometry.bestMatch(for: rect, in: regions) {
             return hold(
@@ -347,7 +347,8 @@ final class MorphoEngine {
             outline: outline,
             frameSize: CGSize(width: frame.width, height: frame.height),
             cropData: crops?.tightJPEG,
-            lucyImageData: crops?.lucyJPEG
+            lucyImageData: crops?.lucyJPEG,
+            descriptor: TargetDescriber.describe(crop: crops?.tight, box: box)
         )
     }
 
@@ -433,6 +434,40 @@ final class MorphoEngine {
         } else {
             Task { await castRealm(realm) }
         }
+    }
+
+    /// A background template: tapping it applies that backdrop alongside
+    /// every targeted cast; tapping the active one takes just it away.
+    func toggleBackdrop(_ realm: Realm) {
+        if session.activeRealm == realm {
+            clearSceneCast()
+        } else {
+            Task { await castRealm(realm) }
+        }
+    }
+
+    /// Drop the whole-scene cast (Realm or incantation), keeping targeted casts.
+    func clearSceneCast() {
+        guard session.activeRealm != nil || session.lastCast != nil else { return }
+        session.activeRealm = nil
+        session.lastCast = nil
+        session.sweepTrigger += 1
+        sceneDidChange()
+    }
+
+    /// The Deck's "Back to Original": every edit goes — backdrop, whole-scene
+    /// cast, targeted casts, a held target — and the Lucy session closes at
+    /// once, so the Stage shows the untouched camera and nothing bills.
+    func revertToOriginal() {
+        let hadCasts = session.hasAnyCast
+        session.activeRealm = nil
+        session.lastCast = nil
+        session.augmentations.removeAll()
+        tracking.removeAll()
+        releaseTarget()
+        lucy.sceneDidChange()
+        if hadCasts { session.sweepTrigger += 1 }
+        Task { await lucy.stopAll() }
     }
 
     /// Back to the untouched feed: no Realm, no lingering incantation, no targeted casts.

@@ -35,6 +35,9 @@ struct AugmentationTarget: Identifiable, Equatable, Sendable {
     var cropData: Data?
     /// The same crop padded to Lucy's aspect (16:9 or 9:16, ≥ 512 px), JPEG.
     var lucyImageData: Data?
+    /// What it looks like and where, for selections nobody named
+    /// ("dark gray object in the lower left of the frame").
+    var descriptor: String?
     let heldAt: Date
 
     init(
@@ -46,6 +49,7 @@ struct AugmentationTarget: Identifiable, Equatable, Sendable {
         frameSize: CGSize,
         cropData: Data? = nil,
         lucyImageData: Data? = nil,
+        descriptor: String? = nil,
         heldAt: Date = .now
     ) {
         self.id = id
@@ -56,6 +60,7 @@ struct AugmentationTarget: Identifiable, Equatable, Sendable {
         self.frameSize = frameSize
         self.cropData = cropData
         self.lucyImageData = lucyImageData
+        self.descriptor = descriptor
         self.heldAt = heldAt
     }
 
@@ -69,11 +74,24 @@ struct AugmentationTarget: Identifiable, Equatable, Sendable {
         return nil
     }
 
-    /// "the person", "the coffee mug", "the selected object".
-    var anchorPhrase: String {
+    /// True when the label says nothing about what it is.
+    var hasGenericLabel: Bool {
         let cleaned = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty, cleaned != "Selection", cleaned != "Object" else { return "the selected object" }
-        return "the " + cleaned.lowercased()
+        return cleaned.isEmpty || cleaned == "Selection" || cleaned == "Object"
+    }
+
+    /// What the prompt should call it: the detector's name when it has a
+    /// real one, else what it looks like and where.
+    var promptSubject: String {
+        hasGenericLabel ? (descriptor ?? label) : label
+    }
+
+    /// "the person", "the coffee mug", "the dark gray object in the lower left of the frame".
+    var anchorPhrase: String {
+        if hasGenericLabel {
+            return descriptor.map { "the " + $0 } ?? "the selected object"
+        }
+        return "the " + label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 

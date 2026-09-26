@@ -26,6 +26,8 @@ final class VoiceConductor {
     private var quietTimer: Task<Void, Never>?
     private var targetingTimeout: Task<Void, Never>?
     private var stagedDismissal: Task<Void, Never>?
+    /// Bumped by `stopEverything`; a cast still composing from before it is dropped.
+    private var castGeneration = 0
     private static let log = Logger(subsystem: "app.morpho", category: "VoiceConductor")
 
     /// Quiet after the last word that ends the utterance.
@@ -139,17 +141,33 @@ final class VoiceConductor {
         }
     }
 
+    /// Stop every voice operation: an open mic in any mode, a locked target,
+    /// a prompt being composed. Nothing already heard gets cast.
+    func stopEverything() {
+        castGeneration += 1
+        cancelTargeting()
+        if session.micMode != .idle {
+            pipeline.stop(flush: false)
+            session.micMode = .idle
+        }
+        session.liveTranscript = ""
+        session.compiledPreview = nil
+    }
+
     // MARK: Speech → cast
 
     /// Also used by a typed incantation (keyboard fallback insurance).
     func compileAndCast(_ rawSpeech: String) {
+        let generation = castGeneration
         Task {
             let spec = await alchemist.compile(rawSpeech)
+            guard generation == castGeneration else { return }
             // Flash the compiled prompt in the Incantation overlay before it
             // fires — the honest "speech morphs into the spell" beat (spec §5).
             session.compiledPreview = spec
             try? await Task.sleep(for: .milliseconds(650))
             session.compiledPreview = nil
+            guard generation == castGeneration else { return }
             await engine.cast(rawSpeech: rawSpeech, spec: spec)
         }
     }
