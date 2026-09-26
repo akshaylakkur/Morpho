@@ -16,7 +16,9 @@ struct ScoutView: View {
     @Environment(SessionModel.self) private var session
     @Environment(MorphoEngine.self) private var engine
 
-    @State private var isShowingUnfoldPrompt = false
+    /// Brief, non-blocking hint shown when Record is pressed on the outer display.
+    @State private var isShowingUnfoldHint = false
+    @State private var hintDismissal: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -29,9 +31,15 @@ struct ScoutView: View {
                     StageView(compact: true)
                         .backgroundExtensionEffect()
                 }
+
+                if isShowingUnfoldHint, !session.isRecording {
+                    unfoldHint
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
             }
             .ignoresSafeArea(edges: .vertical)
             .animation(.smooth, value: session.isRecording)
+            .animation(.smooth, value: isShowingUnfoldHint)
             .toolbar {
                 // The side icons step aside while the recording screen shows.
                 if !session.isRecording {
@@ -39,7 +47,7 @@ struct ScoutView: View {
                     // toolbar item: symbol + title, pinned so it never overflows.
                     ToolbarItem(placement: .topBarPinnedTrailing) {
                         Button("Record", systemImage: "record.circle") {
-                            isShowingUnfoldPrompt = true
+                            showUnfoldHint()
                         }
                     }
 
@@ -75,11 +83,39 @@ struct ScoutView: View {
                     }
                 }
             }
-            .alert("Open to Record", isPresented: $isShowingUnfoldPrompt) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Unfold your iPhone to use both screens, then press Record.")
+            // Unfolding swaps this view out; never leave the hint behind.
+            .onDisappear {
+                hintDismissal?.cancel()
+                isShowingUnfoldHint = false
             }
+        }
+    }
+
+    private var unfoldHint: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "rectangle.portrait.on.rectangle.portrait")
+                .font(.title2)
+            Text("Move to dual screen")
+                .font(.headline)
+            Text("Unfold your iPhone, then press Record.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func showUnfoldHint() {
+        isShowingUnfoldHint = true
+        hintDismissal?.cancel()
+        hintDismissal = Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            isShowingUnfoldHint = false
         }
     }
 
