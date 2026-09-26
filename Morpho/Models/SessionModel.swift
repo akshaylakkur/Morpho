@@ -40,6 +40,8 @@ enum MicMode: Equatable, Sendable {
     case idle
     case holdToTalk
     case openMic
+    /// Listening for the augmentation of a locked target (click-and-augment).
+    case targeting
 }
 
 /// What the Stage is showing (spec §7): the resting butterfly, the reveal,
@@ -96,6 +98,20 @@ final class SessionModel {
     var micAmplitude: Float = 0
     var alchemistAvailable = false
 
+    // MARK: Click-and-augment (targeted casting)
+    /// The locked target and where the flow is; the engine holds the frame.
+    var targeting: TargetingPhase = .idle
+    /// Set when the mic couldn't open for a targeting session, with why, so the HUD can say.
+    var targetingMicUnavailable = false
+    var targetingMicFailureReason: String?
+    /// True while the finger that locked the target is still down (hold-to-talk).
+    var targetingHoldActive = false
+    /// True once audio is actually flowing into the transcriber for this session.
+    var targetingMicReady = false
+    /// Every targeted cast still in effect, newest first.
+    var augmentations: [TargetedAugmentation] = []
+    static let maxAugmentations = 4
+
     // MARK: Rig
     var selfAnchor = true
     var enhance = true
@@ -135,6 +151,33 @@ final class SessionModel {
         } else {
             spellbook.insert(Incantation(rawSpeech: rawSpeech, spec: spec), at: 0)
         }
+    }
+
+    /// Files a targeted cast: one per detected region (re-speaking replaces),
+    /// newest first, capped. Also lands in the spellbook like any other cast.
+    func recordAugmentation(_ augmentation: TargetedAugmentation) {
+        if let regionID = augmentation.target.regionID {
+            augmentations.removeAll { $0.target.regionID == regionID }
+        }
+        augmentations.insert(augmentation, at: 0)
+        if augmentations.count > Self.maxAugmentations {
+            augmentations.removeLast(augmentations.count - Self.maxAugmentations)
+        }
+        sweepTrigger += 1
+        if let index = spellbook.firstIndex(where: { $0.spec == augmentation.spec }) {
+            spellbook[index].recastCount += 1
+        } else {
+            spellbook.insert(Incantation(rawSpeech: augmentation.rawSpeech, spec: augmentation.spec), at: 0)
+        }
+    }
+
+    func removeAugmentation(_ id: UUID) {
+        augmentations.removeAll { $0.id == id }
+    }
+
+    /// True when anything at all is being applied to the feed.
+    var hasAnyCast: Bool {
+        activeRealm != nil || lastCast != nil || !augmentations.isEmpty
     }
 
     func rerollSeedIfUnlocked() {

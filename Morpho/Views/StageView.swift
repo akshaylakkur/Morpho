@@ -124,8 +124,9 @@ struct StageView: View {
 
             Spacer()
 
+            // A targeted cast shows its words in the Deck's transcript box instead.
             IncantationOverlay(
-                transcript: session.liveTranscript,
+                transcript: session.micMode == .targeting ? "" : session.liveTranscript,
                 compiled: session.compiledPreview
             )
             .padding(.bottom, compact ? 14 : 26)

@@ -85,6 +85,31 @@ same take. Files: `Models/Clip.swift`, `Capture/ReelStore.swift`,
 `Capture/ReplayController.swift`, `Views/ReplayDeck.swift`,
 `Views/Components/RecentTakeButton.swift`.
 
+## 0.5 The Voice relay: the Mac's microphone and speech model (simulator only)
+
+The simulator can open the Mac's microphone but can't run a speech model on
+it: `SpeechTranscriber` is unavailable, `DictationTranscriber` vends no audio
+format, and `SFSpeechRecognizer` fails with `kLSRErrorDomain 300`. So voice
+casting in the simulator goes through **Morpho Voice**, a small Mac helper
+that listens on the Mac's microphone, transcribes with the Mac's on-device
+`SpeechTranscriber`, and streams the words into the app.
+
+```sh
+Tools/voice.sh                      # leave running; Ctrl-C stops it
+Tools/voice.sh --listen             # print live transcription in the terminal (no simulator)
+Tools/voice.sh --selftest "phrase"  # synthesize a phrase with `say`, transcribe it, score it
+```
+
+- The Mac's mic opens only while Morpho is listening for a target (the
+  connection is the session) and closes the moment it stops.
+- Same safety model as the Tether: loopback only (`127.0.0.1:47811`), a
+  per-launch token in `~/Library/Application Support/Morpho/voice.json`
+  (mode `0600`), and the mic prompt is attributed to "Morpho Voice".
+- `SpeechPipeline` uses it first whenever it's running (`Alchemist/HostVoiceRelay.swift`);
+  without it, the simulator's failure message says to run `Tools/voice.sh`.
+  Real devices never see it. Keep `HostVoiceRelay.swift` and
+  `Tools/MorphoVoice/.../VoiceServer.swift` wire formats in sync.
+
 ## 1. Add the Decart SDK package (one time, in Xcode UI)
 
 > File ▸ Add Package Dependencies… → `https://github.com/DecartAI/decart-ios`

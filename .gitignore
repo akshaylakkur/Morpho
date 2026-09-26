@@ -8,3 +8,6 @@ xcuserdata/
 
 # Tether helper build products
 Tools/MorphoTether/.build/
+
+# Voice relay build products
+Tools/MorphoVoice/.build/

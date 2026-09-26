@@ -79,7 +79,7 @@ struct ScoutView: View {
                     } label: {
                         Label("Capture Still", systemImage: "camera.shutter.button")
                     }
-                    if session.activeRealm != nil || session.lastCast != nil {
+                    if session.hasAnyCast {
                         Button {
                             engine.clearRealm()
                         } label: {

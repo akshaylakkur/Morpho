@@ -20,3 +20,5 @@ Bitrig-built, Duo simulator). Voice → Lucy 2.5 prompt → transformed feed.
 - Frames are high-frequency and live on `MorphoEngine`, not the session.
 - Keep `TetherFrameSource.swift` and `Tools/MorphoTether/.../FrameServer.swift`
   wire formats in sync.
+- Keep `Alchemist/HostVoiceRelay.swift` and
+  `Tools/MorphoVoice/.../VoiceServer.swift` wire formats in sync.

@@ -5,9 +5,10 @@
 //  The lower screen, in the style of the iOS Camera app: a live duplicate
 //  of the Stage fills the screen as the viewfinder, with the most recent
 //  take floating at the bottom-left and Record at the bottom-right over
-//  the feed — nothing else for now. While a take is
-//  loaded, ReplayDeck takes its place. `condensed` renders the floating
-//  Canvas-mode strip instead.
+//  the feed. Press and hold an outlined object, or drag a box around one,
+//  and say what to change: the viewfinder holds that frame while you speak
+//  (click-and-augment). While a take is loaded, ReplayDeck takes its place.
+//  `condensed` renders the floating Canvas-mode strip instead.
 //
 
 import SwiftUI
@@ -45,10 +46,23 @@ struct DeckView: View {
 
             // Autodetection: segmented regions and their names ride the feed.
             // This layer belongs to the controller alone; the Stage above
-            // stays untouched.
+            // stays untouched. While a target is locked, the frame it was
+            // taken from and the regions on it hold still together.
             if session.stagePhase == .live {
-                DetectionOverlay(segmentation: engine.sceneSegmenter.current, zoom: session.zoom)
-                    .transition(.opacity)
+                let segmentation = engine.heldSegmentation ?? engine.sceneSegmenter.current
+
+                if let held = engine.heldFrame {
+                    HeldFrameView(frame: held, zoom: session.zoom)
+                        .transition(.opacity)
+                }
+
+                DetectionOverlay(
+                    segmentation: segmentation,
+                    zoom: session.zoom,
+                    augmentedRegions: engine.augmentationsByRegion(),
+                    lockedRegionID: session.targeting.target?.regionID
+                )
+                .transition(.opacity)
 
                 if engine.sceneSegmenter.isUnavailable {
                     detectionUnavailableChip
@@ -56,11 +70,15 @@ struct DeckView: View {
                         .padding(.top, 14)
                         .transition(.opacity)
                 }
+
+                AugmentTargetingLayer(segmentation: segmentation, zoom: session.zoom)
+                    .transition(.opacity)
             }
 
             controlBar
         }
         .background(Color.black)
+        .animation(.easeOut(duration: 0.2), value: engine.heldFrame == nil)
         .accessibilityElement(children: .contain)
         .task {
             // Analyze the untouched camera frame (the source every augmentation
@@ -74,7 +92,7 @@ struct DeckView: View {
     /// Shown when on-device Vision can't run here (no inference backend, as
     /// in the Duo simulator) so an empty layer doesn't read as a bug.
     private var detectionUnavailableChip: some View {
-        Label("Detection unavailable on this device", systemImage: "eye.slash")
+        Label("Detection unavailable here · drag a box to select", systemImage: "eye.slash")
             .font(.caption.weight(.medium))
             .foregroundStyle(.white.opacity(0.7))
             .padding(.horizontal, 10)

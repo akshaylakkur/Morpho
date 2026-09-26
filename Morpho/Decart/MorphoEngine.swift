@@ -46,6 +46,24 @@ final class MorphoEngine {
     var liveContext: AnyObject?
     private(set) var isLive = false
 
+    // MARK: Click-and-augment (targeted casting)
+    /// The Deck's viewfinder freezes on this frame while a target is being spoken to.
+    private(set) var heldFrame: CGImage?
+    /// The regions as they were on the held frame, so the overlay freezes with it.
+    private(set) var heldSegmentation: SceneSegmentation?
+    /// Tight crop of the locked target, for the on-device compile.
+    private(set) var heldCrop: CGImage?
+    /// Where each augmentation's target is right now; per-frame state, not observed.
+    @ObservationIgnored private var tracking: [UUID: TrackedShape] = [:]
+    /// A lost region is rebound to whatever region overlaps its last shape this much.
+    static let rebindIoU: CGFloat = 0.4
+
+    private struct TrackedShape {
+        var regionID: Int?
+        var box: CGRect
+        var outline: [CGPoint]
+    }
+
     // Loopcast ring buffer: ~3 seconds of transformed frames at ~15fps (spec §7).
     private(set) var loopcastBuffer: [CGImage] = []
     private var frameCounter = 0
@@ -170,11 +188,12 @@ final class MorphoEngine {
 
     // MARK: Frame path
 
-    private func ingest(_ frame: CGImage) {
+    func ingest(_ frame: CGImage) {
         originalFrame = frame
 
         let transformed = simulateTransform(frame)
         transformedFrame = transformed
+        followTargets()
 
         lastFrameAt = .now
         if !feedIsLive { feedDidResume() }
@@ -201,6 +220,8 @@ final class MorphoEngine {
         // When the real SDK drives the session, the transformed feed arrives
         // as a remote track and this local simulation is bypassed.
         guard !isLive else { return frame }
+        // Targeted casts are staged for Lucy and not rendered locally: only a
+        // Realm or a whole-scene incantation drives the simulation.
         guard session.lastCast != nil || session.activeRealm != nil else { return frame }
         let input = CIImage(cgImage: frame)
         let output = SimulatedLucy.transform(
@@ -210,6 +231,129 @@ final class MorphoEngine {
             time: Date.now.timeIntervalSince(startedAt)
         )
         return ciContext.createCGImage(output, from: input.extent) ?? frame
+    }
+
+    /// Keeps each staged cast attached to its thing: the tracked region when
+    /// visible, a rebind to whatever region took its place, else its last
+    /// known shape. Hand-drawn targets that matched no region stay put.
+    private func followTargets() {
+        guard !session.augmentations.isEmpty else { return }
+        let regions = sceneSegmenter.current?.regions ?? []
+        for augmentation in session.augmentations where augmentation.target.isDetected {
+            var shape = tracking[augmentation.id] ?? TrackedShape(
+                regionID: augmentation.target.regionID,
+                box: augmentation.target.boundingBox,
+                outline: augmentation.target.outline
+            )
+            if let id = shape.regionID, let region = regions.first(where: { $0.id == id }) {
+                shape.box = region.boundingBox
+                shape.outline = region.outline
+            } else if let replacement = regions
+                .map({ ($0, TargetGeometry.iou($0.boundingBox, shape.box)) })
+                .filter({ $0.1 >= Self.rebindIoU })
+                .max(by: { $0.1 < $1.1 })?.0 {
+                shape.regionID = replacement.id
+                shape.box = replacement.boundingBox
+                shape.outline = replacement.outline
+            }
+            tracking[augmentation.id] = shape
+        }
+    }
+
+    // MARK: Click-and-augment (targeted casting)
+
+    /// Lock a detected region: hold the frame and crop the target out of it.
+    func lockTarget(region: DetectedRegion) -> AugmentationTarget? {
+        guard let frame = heldFrame ?? originalFrame else { return nil }
+        return hold(
+            frame: frame,
+            source: .detected(regionID: region.id),
+            label: region.label.isEmpty ? "Object" : region.label,
+            box: region.boundingBox,
+            outline: region.outline
+        )
+    }
+
+    /// Lock a hand-drawn rectangle. It snaps to the detected region it mostly
+    /// covers, so the augmentation can follow that region; otherwise it stays
+    /// a fixed patch of the frame.
+    func lockTarget(manualRect rect: CGRect, snappingTo regions: [DetectedRegion]) -> AugmentationTarget? {
+        guard let frame = heldFrame ?? originalFrame, rect.width > 0.02, rect.height > 0.02 else { return nil }
+        if let match = TargetGeometry.bestMatch(for: rect, in: regions) {
+            return hold(
+                frame: frame,
+                source: .detected(regionID: match.id),
+                label: match.label.isEmpty ? "Object" : match.label,
+                box: match.boundingBox,
+                outline: match.outline
+            )
+        }
+        return hold(frame: frame, source: .manual, label: "Selection", box: rect, outline: [])
+    }
+
+    private func hold(frame: CGImage, source: TargetSource, label: String, box: CGRect, outline: [CGPoint]) -> AugmentationTarget? {
+        let crops = TargetCropper.crops(from: frame, box: box)
+        if heldFrame == nil {
+            heldSegmentation = sceneSegmenter.current
+        }
+        heldFrame = frame
+        heldCrop = crops?.tight
+        return AugmentationTarget(
+            source: source,
+            label: label,
+            boundingBox: box,
+            outline: outline,
+            frameSize: CGSize(width: frame.width, height: frame.height),
+            cropData: crops?.tightJPEG,
+            lucyImageData: crops?.lucyJPEG
+        )
+    }
+
+    /// Let the viewfinder run again.
+    func releaseTarget() {
+        heldFrame = nil
+        heldSegmentation = nil
+        heldCrop = nil
+    }
+
+    /// The compiled augmentation lands on its target and follows it from here
+    /// on. Live path: the target's `lucyBundle` becomes the next `setPrompt`.
+    func applyAugmentation(target: AugmentationTarget, rawSpeech: String, spec: LucyPromptSpec) async {
+        let augmentation = TargetedAugmentation(target: target, rawSpeech: rawSpeech, spec: spec.sanitized())
+        session.recordAugmentation(augmentation)
+        tracking[augmentation.id] = TrackedShape(regionID: target.regionID, box: target.boundingBox, outline: target.outline)
+        let live = Set(session.augmentations.map(\.id))
+        for id in tracking.keys where !live.contains(id) {
+            tracking[id] = nil
+        }
+        releaseTarget()
+        session.rerollSeedIfUnlocked()
+        session.connection = .generating
+        try? await Task.sleep(for: .milliseconds(700))
+        if session.connection == .generating {
+            session.connection = .connected
+        }
+    }
+
+    func removeAugmentation(_ augmentation: TargetedAugmentation) {
+        session.removeAugmentation(augmentation.id)
+        tracking[augmentation.id] = nil
+    }
+
+    func clearAugmentations() {
+        session.augmentations.removeAll()
+        tracking.removeAll()
+    }
+
+    /// Region id → the augmentation riding it, following rebinds.
+    func augmentationsByRegion() -> [Int: TargetedAugmentation] {
+        var result: [Int: TargetedAugmentation] = [:]
+        for augmentation in session.augmentations {
+            if let id = tracking[augmentation.id]?.regionID ?? augmentation.target.regionID {
+                result[id] = augmentation
+            }
+        }
+        return result
     }
 
     // MARK: Casting
@@ -251,11 +395,12 @@ final class MorphoEngine {
         }
     }
 
-    /// Back to the untouched feed: no Realm, no lingering incantation.
+    /// Back to the untouched feed: no Realm, no lingering incantation, no targeted casts.
     func clearRealm() {
-        guard session.activeRealm != nil || session.lastCast != nil else { return }
+        guard session.hasAnyCast else { return }
         session.activeRealm = nil
         session.lastCast = nil
+        clearAugmentations()
         session.sweepTrigger += 1
         // Live path (DecartLive.swift): the SDK keeps its last prompt until a
         // new one lands, so a prompt reset joins that wiring when it goes live.
@@ -363,6 +508,7 @@ final class MorphoEngine {
     private func clearFrames() {
         originalFrame = nil
         transformedFrame = nil
+        releaseTarget()
     }
 
     // MARK: Replay (spec §9)

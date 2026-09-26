@@ -59,6 +59,103 @@ enum PromptTemplates {
         )
     }
 
+    // MARK: Targeted casts (click-and-augment)
+
+    /// Compile speech about one selected thing into a Lucy prompt anchored on
+    /// it, without any model. "make this person look like a ninja" + "Person"
+    /// → a character swap of the person that leaves the rest of the scene alone.
+    static func compileTargeted(_ rawSpeech: String, subject: String) -> LucyPromptSpec {
+        let anchor = anchorPhrase(for: subject)
+        let speech = rawSpeech.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = speech.lowercased()
+        let keep = " Keep everything else in the scene unchanged."
+        let isPerson = anchor.contains("person") || anchor.contains("man") || anchor.contains("woman") || anchor.contains("child")
+
+        if lowered.contains("remove") || lowered.contains("get rid of") || lowered.contains("delete") || lowered.contains("erase") {
+            return LucyPromptSpec(
+                editType: .remove,
+                prompt: "Remove \(anchor) from the scene, filling the space with the surrounding background so nothing looks cut out." + keep,
+                confidence: 0.6
+            )
+        }
+
+        let swapMarkers = [" look like a ", " look like an ", " look like ", " turn into a ", " turn into an ", " turn into ", " into a ", " into an ", " into ", " become a ", " become an ", " become ", " as a ", " as an "]
+        if let wanted = phrase(in: lowered, after: swapMarkers) {
+            let article = wanted.hasPrefix("a ") || wanted.hasPrefix("an ") || wanted.hasPrefix("the ") ? "" : "a "
+            if isPerson {
+                return LucyPromptSpec(
+                    editType: .characterSwap,
+                    prompt: "Replace \(anchor) with \(article)\(wanted), matching the original pose, framing, and movement exactly, with lighting that matches the scene." + keep,
+                    confidence: 0.6
+                )
+            }
+            return LucyPromptSpec(
+                editType: .replace,
+                prompt: "Replace \(anchor) with \(article)\(wanted) in the same place and at the same scale, matching the scene's lighting and perspective." + keep,
+                confidence: 0.6
+            )
+        }
+
+        let addMarkers = ["add a ", "add an ", "add some ", "add ", "give it a ", "give it an ", "give it ", "give him a ", "give her a ", "give them a ", "give this ", "put a ", "put an ", "put some ", "put "]
+        if let thing = phrase(in: lowered, after: addMarkers, fromStart: true) {
+            let cleaned = thing
+                .replacingOccurrences(of: " on it", with: "")
+                .replacingOccurrences(of: " on him", with: "")
+                .replacingOccurrences(of: " on her", with: "")
+                .replacingOccurrences(of: " on them", with: "")
+                .replacingOccurrences(of: " on this", with: "")
+                .replacingOccurrences(of: " to it", with: "")
+            return LucyPromptSpec(
+                editType: .add,
+                prompt: "Add \(cleaned) to \(anchor), attached to it and moving with it, lit to match the scene." + keep,
+                confidence: 0.55
+            )
+        }
+
+        // Default: an attribute change of the selected thing.
+        let desire = cleanedSubject(from: resolvingPronouns(speech, anchor: anchor))
+        return LucyPromptSpec(
+            editType: .attribute,
+            prompt: "Change \(anchor) to \(desire), keeping its shape, position, and motion the same." + keep,
+            confidence: 0.45
+        )
+    }
+
+    /// "Person" → "the person"; "Coffee Mug" → "the coffee mug"; unknown → "the selected object".
+    static func anchorPhrase(for subject: String) -> String {
+        let cleaned = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty, cleaned != "Selection", cleaned != "Object" else { return "the selected object" }
+        return "the " + cleaned.lowercased()
+    }
+
+    /// The words after the first marker found ("look like a" → "ninja"), trimmed of trailing filler.
+    private static func phrase(in text: String, after markers: [String], fromStart: Bool = false) -> String? {
+        for marker in markers {
+            let range: Range<String.Index>?
+            if fromStart {
+                range = text.hasPrefix(marker) ? text.startIndex..<text.index(text.startIndex, offsetBy: marker.count) : nil
+            } else {
+                range = text.range(of: marker)
+            }
+            guard let range else { continue }
+            var tail = String(text[range.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " .!?,"))
+            for suffix in [" please", " right now", " now", " for me"] where tail.hasSuffix(suffix) {
+                tail = String(tail.dropLast(suffix.count))
+            }
+            if !tail.isEmpty { return tail }
+        }
+        return nil
+    }
+
+    /// "make it red" → "make the mug red", so the template never says "it".
+    private static func resolvingPronouns(_ text: String, anchor: String) -> String {
+        var result = " " + text.lowercased() + " "
+        for pronoun in [" this person ", " that person ", " this thing ", " that thing ", " this ", " that ", " it ", " him ", " her ", " them "] {
+            result = result.replacingOccurrences(of: pronoun, with: " " + anchor + " ")
+        }
+        return result.trimmingCharacters(in: .whitespaces)
+    }
+
     /// Strip leading command words so the remainder slots into a template.
     private static func cleanedSubject(from speech: String) -> String {
         var text = speech

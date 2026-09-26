@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Morpho Voice</string>
+	<key>CFBundleExecutable</key>
+	<string>MorphoVoice</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.akshaylakkur.MorphoVoice</string>
+	<key>CFBundleName</key>
+	<string>Morpho Voice</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Morpho Voice listens while you hold a target in the iPhone Duo simulator, so your words can become the augmentation prompt.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Morpho Voice transcribes your speech on this Mac and passes the text to the simulator.</string>
+</dict>
+</plist>
