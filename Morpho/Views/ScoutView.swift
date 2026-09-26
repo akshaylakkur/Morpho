@@ -2,10 +2,10 @@
 //  ScoutView.swift
 //  Morpho
 //
-//  Scout Mode (spec §4.3): compact quick-capture on the outer display.
-//  System vertical bars carry symbol+title toolbar items; the viewfinder
-//  extends beneath them via backgroundExtensionEffect(). Three Realm chips
-//  and the Incant button stay prominent.
+//  Scout Mode (spec §4.3): the outer display. Only the Morpho butterfly rests
+//  here; recording starts on the dual screen, so Record asks to unfold. While
+//  a take recorded on the dual screen is running, the outer display holds the
+//  butterfly on black with "Recording in progress" and the take's timer.
 //
 
 import SwiftUI
@@ -13,99 +13,51 @@ import SwiftUI
 struct ScoutView: View {
     @Environment(SessionModel.self) private var session
     @Environment(MorphoEngine.self) private var engine
-    @Environment(VoiceConductor.self) private var conductor
 
-    /// The hero chips available without unfolding.
-    private var scoutRealms: [Realm] {
-        Array(Realm.all.prefix(3))
-    }
+    @State private var isShowingUnfoldPrompt = false
 
     var body: some View {
         NavigationStack {
             ZStack {
-                // Hero viewfinder extends under the system vertical bars.
-                StageView(compact: true)
-                    .backgroundExtensionEffect()
+                Color.black
 
-                VStack {
-                    Spacer()
-                    HStack(spacing: 10) {
-                        ForEach(scoutRealms) { realm in
-                            RealmChip(realm: realm, isActive: session.activeRealm == realm) {
-                                engine.toggleRealm(realm)
-                            }
-                        }
+                ButterflyCurtain(
+                    phase: .curtain,
+                    compact: true,
+                    caption: session.isRecording ? "Recording in progress" : nil,
+                    backdrop: .black
+                )
+
+                if session.isRecording, let startedAt = session.recordingStartedAt {
+                    VStack {
                         Spacer()
-                        IncantButton(size: 52)
+                        SessionTimerChip(startedAt: startedAt)
+                            .padding(.bottom, 24)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
+                    .transition(.opacity)
                 }
             }
-            .ignoresSafeArea(edges: .vertical)
+            .ignoresSafeArea()
+            .animation(.smooth, value: session.isRecording)
             .toolbar {
-                // Record migrates into the system vertical bar as a proper
-                // toolbar item: symbol + title, pinned so it never overflows.
                 ToolbarItem(placement: .topBarPinnedTrailing) {
-                    Button {
-                        engine.toggleRecording()
-                    } label: {
-                        Label(
-                            session.isRecording ? "Stop" : "Record",
-                            systemImage: session.isRecording ? "stop.circle.fill" : "record.circle"
-                        )
-                    }
-                    .tint(session.isRecording ? .red : nil)
-                }
-
-                ToolbarItemGroup {
-                    Button {
-                        engine.flipCamera()
-                    } label: {
-                        Label("Flip Camera", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.camera.fill")
-                    }
-                }
-                .visibilityPriority(.high)
-
-                // Secondary controls live in the system overflow menu.
-                ToolbarOverflowMenu {
-                    Button {
-                        Task { await engine.exportLoopcast() }
-                    } label: {
-                        Label("Loopcast", systemImage: "arrow.trianglehead.2.counterclockwise.rotate.90")
-                    }
-                    Button {
-                        _ = engine.captureStill()
-                    } label: {
-                        Label("Capture Still", systemImage: "camera.shutter.button")
-                    }
-                    if session.activeRealm != nil || session.lastCast != nil {
-                        Button {
-                            engine.clearRealm()
-                        } label: {
-                            Label("Clear Realm", systemImage: "arrow.uturn.backward")
+                    if session.isRecording {
+                        Button("Stop", systemImage: "stop.circle.fill") {
+                            engine.toggleRecording()
+                        }
+                        .tint(.red)
+                    } else {
+                        Button("Record", systemImage: "record.circle") {
+                            isShowingUnfoldPrompt = true
                         }
                     }
-                    sourceMenu
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var sourceMenu: some View {
-        Picker("Source", selection: sourceBinding) {
-            ForEach(engine.availableSources(), id: \.self) { kind in
-                Label(kind.displayName, systemImage: kind.symbol)
-                    .tag(kind)
+            .alert("Open to Record", isPresented: $isShowingUnfoldPrompt) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Unfold your iPhone to use both screens, then press Record.")
             }
         }
-    }
-
-    private var sourceBinding: Binding<VideoSourceKind> {
-        Binding(
-            get: { session.videoSource },
-            set: { engine.selectSource($0) }
-        )
     }
 }
