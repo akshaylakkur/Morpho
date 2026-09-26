@@ -60,12 +60,15 @@ enum LucyPauseReason: Equatable, Sendable {
     case sessionCap
     /// Live Lucy reached this launch's spending cap; stays off.
     case launchCap
+    /// Lucy runs only while recording; resumes with the next Record.
+    case notRecording
 
     var label: String {
         switch self {
         case .feedStalled: "Paused · no camera"
         case .sessionCap: "Paused · session limit"
         case .launchCap: "Stopped · spending limit"
+        case .notRecording: "Paused · not recording"
         }
     }
 }
@@ -131,6 +134,8 @@ struct LucyLinkStatus: Equatable, Sendable {
     var downlinkFPS: Double = 0
     var sessionsOpened = 0
     var promptsApplied = 0
+    /// A short message for the Deck (e.g. a cast Lucy refused); clears itself.
+    var notice: String?
     var log: [LucyLogEntry] = []
 
     static let dollarsPerSecond = 0.02
@@ -162,8 +167,9 @@ enum LucyTransportEvent: Sendable {
     case ended(reason: String)
     /// Seconds generated so far in this session (what Decart bills).
     case generatedSeconds(Double)
-    /// A transformed frame, delivered on the main actor.
-    case output(CGImage)
+    /// A transformed frame, delivered on the main actor, with its mean
+    /// luminance (0…1) when the transport measured it.
+    case output(CGImage, luma: Double?)
 }
 
 enum LucyTransportError: LocalizedError {
@@ -200,4 +206,23 @@ protocol LucyTransport: AnyObject {
 
     /// Close the session and stop billing.
     func disconnect() async
+}
+
+/// How to treat a failure Lucy reports.
+enum LucyFailureKind: Equatable, Sendable {
+    /// Lucy won't generate this prompt (copyrighted IP, content policy): the cast must go.
+    case contentRejected
+    /// The credential was refused: retrying can't help.
+    case unauthorized
+    /// Network trouble or a server hiccup: worth a retry.
+    case transient
+
+    static func classify(_ reason: String) -> LucyFailureKind {
+        let lowered = reason.lowercased()
+        let content = ["copyright", "cannot be generated", "content policy", "moderation", "not allowed", "inappropriate", "violates", "unsafe content"]
+        if content.contains(where: lowered.contains) { return .contentRejected }
+        let auth = ["401", "403", "unauthorized", "invalid api key", "session expired", "forbidden"]
+        if auth.contains(where: lowered.contains) { return .unauthorized }
+        return .transient
+    }
 }

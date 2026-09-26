@@ -31,6 +31,9 @@ final class DecartLucyTransport: LucyTransport {
     private var eventsTask: Task<Void, Never>?
     private var remoteStreamsTask: Task<Void, Never>?
     private var closing = false
+    /// Until connect() returns, failures surface as its thrown error (with
+    /// Lucy's real reason), not as a generic `.ended` event.
+    private var didConnect = false
     private var lastConnectionState: DecartRealtimeConnectionState?
 
     init(apiKey: String) {
@@ -39,6 +42,7 @@ final class DecartLucyTransport: LucyTransport {
 
     func connect(format: LucyStreamFormat, directive: LucyDirective, firstFrame: CVPixelBuffer) async throws {
         closing = false
+        didConnect = false
         let client = DecartClient(decartConfiguration: DecartConfiguration(apiKey: apiKey))
         let manager = try client.createRealtimeManager(options: RealtimeConfiguration(
             model: Models.realtime(.lucy2_5),
@@ -53,8 +57,8 @@ final class DecartLucyTransport: LucyTransport {
         // A buffer track must carry a frame before it can be published.
         uplink.send(firstFrame)
 
-        tap.onFrame = { [weak self] image in
-            self?.onEvent?(.output(image))
+        tap.onFrame = { [weak self] image, luma in
+            self?.onEvent?(.output(image, luma: luma))
         }
 
         eventsTask = Task { @MainActor [weak self] in
@@ -78,6 +82,7 @@ final class DecartLucyTransport: LucyTransport {
                 self?.bind(stream.videoTrack)
             }
         }
+        didConnect = true
         onEvent?(.connected)
     }
 
@@ -133,9 +138,9 @@ final class DecartLucyTransport: LucyTransport {
         case .reconnecting:
             onEvent?(.reconnecting)
         case .error:
-            if !closing { onEvent?(.ended(reason: "Lucy ended the session (reconnect attempts exhausted or credentials rejected)")) }
+            if !closing, didConnect { onEvent?(.ended(reason: "Lucy ended the session (reconnect attempts exhausted or credentials rejected)")) }
         case .disconnected:
-            if !closing, previous != nil, previous != .connecting { onEvent?(.ended(reason: "Lucy disconnected")) }
+            if !closing, didConnect, previous != nil, previous != .connecting { onEvent?(.ended(reason: "Lucy disconnected")) }
         case .connecting, .idle:
             break
         @unknown default:
@@ -186,9 +191,9 @@ nonisolated final class LucyOutputTap: NSObject, VideoRenderer, @unchecked Senda
     private let queue = DispatchQueue(label: "morpho.lucy.downlink", qos: .userInteractive)
     private let lock = NSLock()
     private var inFlight = false
-    private var handler: (@MainActor (CGImage) -> Void)?
+    private var handler: (@MainActor (CGImage, Double?) -> Void)?
 
-    var onFrame: (@MainActor (CGImage) -> Void)? {
+    var onFrame: (@MainActor (CGImage, Double?) -> Void)? {
         get { lock.withLock { handler } }
         set { lock.withLock { handler = newValue } }
     }
@@ -204,20 +209,21 @@ nonisolated final class LucyOutputTap: NSObject, VideoRenderer, @unchecked Senda
         }
         guard proceed else { return }
         queue.async { [self] in
-            let image = convert(frame)
+            let converted = convert(frame)
             let handler = lock.withLock { self.handler }
-            guard let image, let handler else {
+            guard let converted, let handler else {
                 lock.withLock { inFlight = false }
                 return
             }
             Task { @MainActor [weak self] in
-                handler(image)
+                handler(converted.image, converted.luma)
                 self?.lock.withLock { self?.inFlight = false }
             }
         }
     }
 
-    private func convert(_ frame: VideoFrame) -> CGImage? {
+    /// The frame as a CGImage, plus its brightness so warm-up frames can be held back.
+    private func convert(_ frame: VideoFrame) -> (image: CGImage, luma: Double?)? {
         guard let buffer = frame.toCVPixelBuffer() else { return nil }
         var image = CIImage(cvPixelBuffer: buffer)
         switch frame.rotation {
@@ -226,7 +232,8 @@ nonisolated final class LucyOutputTap: NSObject, VideoRenderer, @unchecked Senda
         case ._270: image = image.oriented(.left)
         default: break
         }
-        return context.createCGImage(image, from: image.extent)
+        guard let cgImage = context.createCGImage(image, from: image.extent) else { return nil }
+        return (cgImage, LucyFrameProbe.meanLuma(of: image, context: context))
     }
 }
 #endif

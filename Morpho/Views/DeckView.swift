@@ -75,7 +75,14 @@ struct DeckView: View {
                     .transition(.opacity)
             }
 
-            controlBar
+            VStack(spacing: 12) {
+                if let notice = session.lucy.notice {
+                    lucyNotice(notice)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                controlBar
+            }
+            .animation(Theme.chipSpring, value: session.lucy.notice)
         }
         .background(Color.black)
         .animation(.easeOut(duration: 0.2), value: engine.heldFrame == nil)
@@ -99,6 +106,18 @@ struct DeckView: View {
             .padding(.vertical, 6)
             .background(.black.opacity(0.45), in: .capsule)
             .allowsHitTesting(false)
+    }
+
+    /// A cast Lucy refused (or similar): says what happened in plain words.
+    private func lucyNotice(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            .padding(.horizontal, 20)
+            .accessibilityAddTraits(.isStaticText)
     }
 
     private var controlBar: some View {

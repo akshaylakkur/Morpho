@@ -143,7 +143,7 @@ final class RehearsalLucyTransport: LucyTransport {
         }
         output = tintTrackedRegions(on: output)
         if let image = context.createCGImage(output, from: input.extent) {
-            onEvent?(.output(image))
+            onEvent?(.output(image, luma: nil))
         }
     }
 

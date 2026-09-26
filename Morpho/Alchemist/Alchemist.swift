@@ -53,6 +53,10 @@ final class Alchemist {
     adjectives like "realistic", "seamless", "natural", "magical".
     5. Never mix unrelated styles in one prompt.
     6. Keep it under 120 words.
+    7. Never name copyrighted or trademarked characters, franchises, brands, \
+    or real celebrities — Lucy refuses them. Describe the look instead: \
+    "a ninja turtle" becomes "a ninja warrior with a green turtle shell and a \
+    blue bandana mask".
     Edit families and their templates:
     - add: "Add [object] to [location] …"
     - replace: "Replace [original] with [new] …"

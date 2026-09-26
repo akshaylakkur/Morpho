@@ -27,6 +27,7 @@ nonisolated final class LucyFrameEncoder: @unchecked Sendable {
     private var latest: CVPixelBuffer?
     private var sink: ((CVPixelBuffer) -> Void)?
     private var encodedCount = 0
+    private var luma: Double?
 
     /// Starts conditioning frames into `format`; `sink` receives each one on the encoder queue.
     func begin(format: LucyStreamFormat, sink: ((CVPixelBuffer) -> Void)?) {
@@ -51,6 +52,7 @@ nonisolated final class LucyFrameEncoder: @unchecked Sendable {
             format = nil
             pool = nil
             latest = nil
+            luma = nil
         }
     }
 
@@ -58,6 +60,9 @@ nonisolated final class LucyFrameEncoder: @unchecked Sendable {
 
     /// The most recent conditioned frame, used to prime a new session.
     var latestFrame: CVPixelBuffer? { lock.withLock { latest } }
+
+    /// Mean luminance of a recent source frame (sampled), for spotting blank Lucy output.
+    var latestLuma: Double? { lock.withLock { luma } }
 
     /// Frames encoded since the last call; the director turns this into fps.
     func drainCount() -> Int {
@@ -85,8 +90,12 @@ nonisolated final class LucyFrameEncoder: @unchecked Sendable {
             if let pool, let format {
                 output = encode(image, format: format, pool: pool)
             }
+            // Brightness drifts slowly; a sample every few frames is plenty.
+            let sampleLuma = lock.withLock { encodedCount % 6 == 0 || luma == nil }
+            let measured = sampleLuma ? LucyFrameProbe.meanLuma(of: CIImage(cgImage: image), context: context) : nil
             let sink: ((CVPixelBuffer) -> Void)? = lock.withLock {
                 busy = false
+                if let measured { luma = measured }
                 if let output {
                     latest = output
                     encodedCount += 1
@@ -130,5 +139,28 @@ nonisolated final class LucyFrameEncoder: @unchecked Sendable {
         var pool: CVPixelBufferPool?
         CVPixelBufferPoolCreate(nil, [kCVPixelBufferPoolMinimumBufferCountKey: 4] as CFDictionary, attributes as CFDictionary, &pool)
         return pool
+    }
+}
+
+/// Cheap frame measurements for the Lucy link.
+nonisolated enum LucyFrameProbe {
+    /// Mean Rec. 709 luminance, 0…1 (one GPU reduction to a single pixel).
+    static func meanLuma(of image: CIImage, context: CIContext) -> Double? {
+        guard !image.extent.isEmpty,
+              let average = CIFilter(name: "CIAreaAverage", parameters: [
+                  kCIInputImageKey: image,
+                  kCIInputExtentKey: CIVector(cgRect: image.extent),
+              ])?.outputImage
+        else { return nil }
+        var pixel = [UInt8](repeating: 0, count: 4)
+        context.render(average, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+        return (0.2126 * Double(pixel[0]) + 0.7152 * Double(pixel[1]) + 0.0722 * Double(pixel[2])) / 255
+    }
+
+    /// Lucy sends black frames while it warms up (and briefly around some
+    /// prompt changes). A frame that's near-black while the camera sees a
+    /// lit scene is one of those, never the edit.
+    static func isBlank(outputLuma: Double, sourceLuma: Double?) -> Bool {
+        outputLuma < 0.05 && (sourceLuma ?? 1) > 0.12
     }
 }

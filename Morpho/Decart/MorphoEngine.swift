@@ -229,7 +229,15 @@ final class MorphoEngine {
         // While a Lucy transport is in use the frame goes up, and what the
         // Stage shows is Lucy's latest (the untouched frame until it arrives).
         lucy.ingest(frame)
-        let transformed = lucy.drivesFeed ? lucy.output(for: frame) : simulateTransform(frame)
+        let transformed: CGImage
+        if lucy.drivesFeed {
+            transformed = lucy.output(for: frame)
+        } else if session.lucy.mode.usesTransport || !session.isRecording {
+            // The overlay runs only while recording (and a paused Lucy shows the untouched feed).
+            transformed = frame
+        } else {
+            transformed = simulateTransform(frame)
+        }
         transformedFrame = transformed
 
         lastFrameAt = .now
@@ -471,6 +479,8 @@ final class MorphoEngine {
             session.recordingStartedAt = .now
             session.isRecording = true
         }
+        // Lucy runs only while recording.
+        lucy.recordingDidChange(session.isRecording)
     }
 
     // MARK: The reveal (spec §7)

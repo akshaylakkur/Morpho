@@ -40,7 +40,8 @@ private func frame(width: Int = 360, height: Int = 640) -> CGImage {
     let format = UIGraphicsImageRendererFormat()
     format.scale = 1
     return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
-        UIColor.blue.setFill()
+        // A lit scene, so black Lucy output reads as blank.
+        UIColor.lightGray.setFill()
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     }.cgImage!
 }
@@ -65,9 +66,18 @@ private final class RecordingTransport: LucyTransport {
     var applied: [LucyDirective] = []
     var disconnects = 0
     var failConnect = false
+    /// Refuse any prompt containing this text, the way Lucy refuses copyrighted IP.
+    var refuse: String?
+
+    private func check(_ directive: LucyDirective) throws {
+        if let refuse, directive.text.localizedCaseInsensitiveContains(refuse) {
+            throw LucyTransportError.rejected("Server error: Content contains copyrighted IP that cannot be generated")
+        }
+    }
 
     func connect(format: LucyStreamFormat, directive: LucyDirective, firstFrame: CVPixelBuffer) async throws {
         if failConnect { throw LucyTransportError.rejected("nope") }
+        try check(directive)
         connectedWith = directive
         connectedFormat = format
         onEvent?(.connected)
@@ -77,6 +87,7 @@ private final class RecordingTransport: LucyTransport {
 
     func apply(_ directive: LucyDirective) async throws {
         try await Task.sleep(for: .milliseconds(10))
+        try check(directive)
         applied.append(directive)
     }
 
@@ -94,17 +105,19 @@ private func scratchDefaults() -> UserDefaults {
 }
 
 @MainActor
-private func makeDirector(mode: LucyLinkMode = .rehearsal, defaults: UserDefaults = scratchDefaults()) async -> (SessionModel, LucyDirector, () -> [RecordingTransport]) {
+private func makeDirector(mode: LucyLinkMode = .rehearsal, defaults: UserDefaults = scratchDefaults(), refuse: String? = nil) async -> (SessionModel, LucyDirector, () -> [RecordingTransport]) {
     let session = SessionModel()
     var made: [RecordingTransport] = []
     let director = LucyDirector(session: session, defaults: defaults) { _ in
         let transport = RecordingTransport()
+        transport.refuse = refuse
         made.append(transport)
         return transport
     }
     director.policy.idleCloseDelay = .milliseconds(50)
     director.policy.stallCloseDelay = .milliseconds(50)
     director.policy.retryDelay = .milliseconds(20)
+    director.recordingDidChange(true)
     if mode != .simulated {
         await director.setMode(mode)
     }
@@ -409,6 +422,7 @@ struct LucyDirectorTests {
             return transport
         }
         director.policy.retryDelay = .milliseconds(10)
+        director.recordingDidChange(true)
         await director.setMode(.rehearsal)
         session.augmentations = [mugCast]
         director.sceneDidChange()
@@ -418,5 +432,108 @@ struct LucyDirectorTests {
         }
         #expect(failed)
         #expect(attempts == 1 + director.policy.maxRetries)
+    }
+
+    @Test func stoppingRecordClosesTheSessionAndRecordBringsItBack() async throws {
+        let (session, director, made) = await makeDirector()
+        session.augmentations = [mugCast]
+        director.sceneDidChange()
+        _ = await pump(director) { made().first?.connectedWith != nil }
+        let first = try #require(made().first)
+
+        director.recordingDidChange(false)
+        #expect(session.lucy.phase == .paused(.notRecording))
+        #expect(!director.drivesFeed)
+        let closed = await eventually { first.disconnects == 1 }
+        #expect(closed)
+
+        // A cast while not recording waits for Record.
+        session.augmentations = [hoodieCast, mugCast]
+        director.sceneDidChange()
+        for _ in 0..<5 { director.ingest(frame()) }
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(made().count == 1)
+
+        director.recordingDidChange(true)
+        let reopened = await pump(director) { made().count == 2 && made()[1].connectedWith != nil }
+        #expect(reopened)
+        #expect(made()[1].connectedWith?.text.contains("red leather jacket") == true)
+    }
+
+    @Test func nothingOpensBeforeRecordIsPressed() async {
+        let session = SessionModel()
+        var made = 0
+        let director = LucyDirector(session: session, defaults: scratchDefaults()) { _ in
+            made += 1
+            return RecordingTransport()
+        }
+        await director.setMode(.rehearsal)
+        session.augmentations = [mugCast]
+        director.sceneDidChange()
+        for _ in 0..<10 { director.ingest(frame()) }
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(made == 0)
+        #expect(session.lucy.phase == .paused(.notRecording))
+    }
+
+    @Test func blackWarmUpFramesNeverReachTheStage() async throws {
+        let (session, director, made) = await makeDirector()
+        session.augmentations = [mugCast]
+        director.sceneDidChange()
+        _ = await pump(director) { made().first?.connectedWith != nil }
+        let transport = try #require(made().first)
+        // The encoder has measured the (light gray) camera by now.
+        _ = await pump(director) { director.encoder.latestLuma != nil }
+
+        let camera = frame()
+        let black = frame(width: 8, height: 8)
+        transport.onEvent?(.output(black, luma: 0.01))
+        #expect(director.output(for: camera) === camera)
+
+        let edited = frame(width: 16, height: 16)
+        transport.onEvent?(.output(edited, luma: 0.5))
+        #expect(director.output(for: camera) === edited)
+        _ = session
+    }
+
+    @Test func aDarkSceneKeepsItsDarkOutput() {
+        #expect(LucyFrameProbe.isBlank(outputLuma: 0.01, sourceLuma: 0.6))
+        #expect(!LucyFrameProbe.isBlank(outputLuma: 0.01, sourceLuma: 0.05))
+        #expect(!LucyFrameProbe.isBlank(outputLuma: 0.3, sourceLuma: 0.6))
+    }
+
+    @Test func failuresAreClassified() {
+        #expect(LucyFailureKind.classify("Server error: Content contains copyrighted IP that cannot be generated") == .contentRejected)
+        #expect(LucyFailureKind.classify("401 Unauthorized") == .unauthorized)
+        #expect(LucyFailureKind.classify("Network error(Timed out)") == .transient)
+    }
+
+    @Test func aRefusedFirstCastIsRemovedWithoutRetrying() async {
+        let (session, director, made) = await makeDirector(refuse: "trophy")
+        session.augmentations = [mugCast]
+        director.sceneDidChange()
+        let removed = await pump(director) { session.augmentations.isEmpty }
+        #expect(removed)
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(made().count == 1)
+        #expect(session.lucy.phase == .idle)
+        #expect(session.lucy.notice?.contains("copyrighted") == true)
+    }
+
+    @Test func aRefusedNewCastLeavesTheOthersApplied() async throws {
+        let (session, director, made) = await makeDirector(refuse: "leather")
+        session.augmentations = [mugCast]
+        director.sceneDidChange()
+        _ = await pump(director) { made().first?.connectedWith != nil }
+        let transport = try #require(made().first)
+
+        session.augmentations = [hoodieCast, mugCast]
+        director.sceneDidChange()
+        let removed = await eventually { session.augmentations.map(\.id) == [mugCast.id] }
+        #expect(removed)
+        // Same session, still streaming the mug.
+        #expect(made().count == 1)
+        #expect(transport.disconnects == 0)
+        #expect(session.lucy.directive?.text == mugCast.spec.prompt)
     }
 }

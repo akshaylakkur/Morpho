@@ -39,8 +39,9 @@ final class LucyDirector {
     struct Policy: Equatable, Sendable {
         /// Grace before closing a session once nothing is cast.
         var idleCloseDelay: Duration = .seconds(6)
-        /// How long the camera may be silent before the session closes.
-        var stallCloseDelay: Duration = .seconds(4)
+        /// How long the camera may be silent (beyond the engine's own 1.2 s
+        /// stall detection) before the session closes.
+        var stallCloseDelay: Duration = .zero
         var retryDelay: Duration = .seconds(2)
         var maxRetries = 2
         /// Lucy output older than this is stale; the Stage shows the untouched feed instead.
@@ -75,6 +76,10 @@ final class LucyDirector {
     @ObservationIgnored private var retries = 0
     @ObservationIgnored private var liveSecondsBeforeSession: Double = 0
     @ObservationIgnored private var feedStalled = false
+    /// Lucy runs only while Record is on.
+    @ObservationIgnored private(set) var recording = false
+    /// Blank warm-up frames held back this session (logged once).
+    @ObservationIgnored private var blankFramesHeld = 0
     /// Where tracked targets are now, for the rehearsal tint (set by the engine).
     @ObservationIgnored var trackedRegions: (() -> [RehearsalLucyTransport.TrackedRegion])?
 
@@ -98,7 +103,36 @@ final class LucyDirector {
 
     /// True when the feed on screen comes from the transport rather than the simulation.
     var drivesFeed: Bool {
-        status.mode.usesTransport && status.directive != nil
+        status.mode.usesTransport && status.directive != nil && recording && !feedStalled
+    }
+
+    /// Record started or stopped. Lucy runs only while recording: stopping
+    /// closes the session at once (the casts stay, and come back with the
+    /// next Record).
+    func recordingDidChange(_ isRecording: Bool) {
+        guard isRecording != recording else { return }
+        recording = isRecording
+        guard status.mode.usesTransport, status.directive != nil else { return }
+        if isRecording {
+            switch status.phase {
+            case .paused(.notRecording), .idle:
+                guard !feedStalled else {
+                    status.phase = .paused(.feedStalled)
+                    return
+                }
+                log("Recording; opening")
+                status.phase = .connecting
+                openWhenFrameReady()
+            default:
+                break
+            }
+        } else {
+            latestOutput = nil
+            status.phase = .paused(.notRecording)
+            Task { @MainActor in
+                await closeSession(reason: "Recording stopped")
+            }
+        }
     }
 
     // MARK: Mode
@@ -145,6 +179,8 @@ final class LucyDirector {
             if sessionOpen, let directive { push(directive) }
         } else if case .paused = status.phase {
             // Capped: waits for a manual resume. Stalled: reopens with the camera.
+        } else if !recording {
+            status.phase = .paused(.notRecording)
         } else if feedStalled {
             status.phase = .paused(.feedStalled)
         } else if status.phase != .connecting {
@@ -158,7 +194,7 @@ final class LucyDirector {
     /// Every source frame passes through here while a transport is in use.
     func ingest(_ frame: CGImage) {
         sourceSize = CGSize(width: frame.width, height: frame.height)
-        guard status.mode.usesTransport, status.directive != nil else { return }
+        guard status.mode.usesTransport, status.directive != nil, recording else { return }
         if encoder.currentFormat == nil {
             encoder.begin(format: .matching(width: frame.width, height: frame.height), sink: nil)
         }
@@ -178,6 +214,8 @@ final class LucyDirector {
 
     func feedDidStall() {
         feedStalled = true
+        // The overlay goes with the camera, immediately.
+        latestOutput = nil
         guard status.phase.isInSession || status.phase == .connecting else { return }
         closeTask?.cancel()
         let delay = policy.stallCloseDelay
@@ -191,7 +229,7 @@ final class LucyDirector {
 
     func feedDidResume() {
         feedStalled = false
-        if case .paused(.feedStalled) = status.phase, status.directive != nil {
+        if case .paused(.feedStalled) = status.phase, status.directive != nil, recording {
             log("Camera is back; reopening")
             status.phase = .connecting
             openWhenFrameReady()
@@ -205,7 +243,7 @@ final class LucyDirector {
 
     /// After a session cap (or a failure), open a fresh session.
     func resume() {
-        guard status.directive != nil, status.mode.usesTransport else { return }
+        guard status.directive != nil, status.mode.usesTransport, recording else { return }
         if status.phase == .paused(.launchCap) { return }
         retries = 0
         status.phase = .connecting
@@ -267,6 +305,7 @@ final class LucyDirector {
                 status.promptsApplied += 1
                 status.sessionsOpened += 1
                 status.sessionSeconds = 0
+                blankFramesHeld = 0
                 liveSecondsBeforeSession = status.liveSeconds
                 retries = 0
                 log("Session open; prompt applied (\(directive.text.count) chars)")
@@ -323,7 +362,20 @@ final class LucyDirector {
         log("Failed: \(reason)")
         await closeSession(reason: "Error")
         status.promptState = .failed(reason)
-        guard status.directive != nil, !feedStalled, retries < policy.maxRetries else {
+        switch LucyFailureKind.classify(reason) {
+        case .contentRejected:
+            // Retrying the same prompt can never work: remove what Lucy refused
+            // and reopen with whatever else is cast.
+            status.phase = .idle
+            rejectNewestCast(reason: reason)
+            return
+        case .unauthorized:
+            status.phase = .failed(reason)
+            return
+        case .transient:
+            break
+        }
+        guard status.directive != nil, !feedStalled, recording, retries < policy.maxRetries else {
             status.phase = .failed(reason)
             return
         }
@@ -334,6 +386,32 @@ final class LucyDirector {
         guard status.phase == .reconnecting else { return }
         status.phase = .connecting
         openWhenFrameReady()
+    }
+
+    /// Lucy refused the prompt's content. The newest cast is what changed it,
+    /// so that one goes; everything else stays applied.
+    private func rejectNewestCast(reason: String) {
+        guard let newest = status.directive?.parts.first else { return }
+        switch newest.kind {
+        case .targeted(let id):
+            session.augmentations.removeAll { $0.id == id }
+        case .scene:
+            session.lastCast = nil
+            session.activeRealm = nil
+        }
+        let why = reason.lowercased().contains("copyright") ? "it names a copyrighted character or brand" : "it breaks Lucy's content rules"
+        showNotice("Lucy won't make “\(newest.title)”: \(why). Removed it — try describing the look instead.")
+        log("Removed “\(newest.title)” (refused by Lucy)")
+        retries = 0
+        sceneDidChange()
+    }
+
+    private func showNotice(_ message: String) {
+        status.notice = message
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(7))
+            if self?.status.notice == message { self?.status.notice = nil }
+        }
     }
 
     // MARK: Prompt updates (serialized, newest wins)
@@ -359,8 +437,15 @@ final class LucyDirector {
                     continue
                 } catch {
                     guard self.transport === transport else { return }
-                    status.promptState = .failed(error.localizedDescription)
-                    log("Prompt failed: \(error.localizedDescription)")
+                    let reason = error.localizedDescription
+                    log("Prompt failed: \(reason)")
+                    if LucyFailureKind.classify(reason) == .contentRejected {
+                        // The session is fine; drop the cast Lucy refused and send the rest.
+                        status.promptState = .failed(reason)
+                        rejectNewestCast(reason: reason)
+                        return
+                    }
+                    status.promptState = .failed(reason)
                 }
             }
         }
@@ -385,7 +470,17 @@ final class LucyDirector {
                 status.liveSeconds = liveSecondsBeforeSession + seconds
             }
             enforceCaps()
-        case .output(let image):
+        case .output(let image, let luma):
+            guard recording else { return }
+            // Lucy's warm-up frames are black: keep showing the camera until real output arrives.
+            if let luma, LucyFrameProbe.isBlank(outputLuma: luma, sourceLuma: encoder.latestLuma) {
+                if blankFramesHeld == 0 { log("Holding the camera image while Lucy warms up") }
+                blankFramesHeld += 1
+                return
+            }
+            if blankFramesHeld > 0, latestOutput == nil {
+                log("Lucy output arrived after \(blankFramesHeld) blank frames")
+            }
             latestOutput = image
             latestOutputAt = .now
             downlinkCount += 1
