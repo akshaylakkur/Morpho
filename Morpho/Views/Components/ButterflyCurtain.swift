@@ -18,6 +18,8 @@ struct ButterflyCurtain: View {
     var compact = false
     /// Shown under the resting butterfly (e.g. "Camera Not Connected").
     var caption: String?
+    /// The resting backdrop behind the butterfly.
+    var backdrop: Color = Theme.stageBackground
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -35,7 +37,7 @@ struct ButterflyCurtain: View {
 
             ZStack {
                 IrisShape(progress: iris)
-                    .fill(Theme.stageBackground, style: FillStyle(eoFill: true))
+                    .fill(backdrop, style: FillStyle(eoFill: true))
 
                 HStack(spacing: 2) {
                     wing(mirrored: false, size: wingSize)
@@ -62,7 +64,7 @@ struct ButterflyCurtain: View {
 
                 if let caption {
                     Text(caption)
-                        .font(.system(compact ? .footnote : .subheadline, design: .rounded, weight: .medium))
+                        .font(.system(compact ? .footnote : .subheadline, weight: .medium))
                         .foregroundStyle(.white.opacity(0.65))
                         .position(x: size.width / 2, y: size.height / 2 + wingSize.height * 0.85)
                         .transition(.opacity)

@@ -488,15 +488,13 @@ final class MorphoEngine {
 
     func toggleRecording() {
         exitReplay()
-        // Record is also the curtain call (spec §7), and arms the Stage to
-        // reopen by itself whenever the feed comes back.
-        session.stageArmed = true
-        if session.stagePhase == .curtain {
-            openStage()
-        }
         if session.isRecording {
-            // Stop: the feed keeps showing, but from here on it counts for
-            // nothing — the take is finalized and filed in the Reel (spec §9).
+            // Stop: the take is finalized and filed in the Reel (spec §9), and
+            // the Stage returns to the resting butterfly it showed before
+            // Record — disarmed, so it waits for the next Record to reopen.
+            session.stageArmed = false
+            if session.stagePhase == .opening { session.stagePhase = .live }
+            closeStage()
             session.isRecording = false
             let started = session.recordingStartedAt
             session.recordingStartedAt = nil
@@ -510,12 +508,51 @@ final class MorphoEngine {
                 session.lastExportURL = clip.url
             }
         } else {
+            // Record is also the curtain call (spec §7), and arms the Stage to
+            // reopen by itself whenever the feed comes back.
+            session.stageArmed = true
+            if session.stagePhase == .curtain {
+                openStage()
+            }
             // The writer itself opens on the first frame (see ingest).
             session.recordingStartedAt = .now
             session.isRecording = true
         }
         // Lucy runs only while recording.
         lucy.recordingDidChange(session.isRecording)
+    }
+
+    // MARK: Dual-screen recording
+
+    /// The source that was showing before a dual-screen take swapped in the
+    /// live feed; restored when that take stops.
+    private var sourceBeforeLiveTake: VideoSourceKind?
+
+    /// Record on the dual screen: takes are shot from the live feed (the
+    /// tethered iPhone in the simulator, the device camera on hardware),
+    /// never the demo clip. Stopping puts the previous source back.
+    func toggleLiveRecording() {
+        if session.isRecording {
+            toggleRecording()
+            if let previous = sourceBeforeLiveTake {
+                sourceBeforeLiveTake = nil
+                selectSource(previous)
+            }
+            return
+        }
+
+        let live: VideoSourceKind? = if CameraFrameSource.isAvailable {
+            .localCamera
+        } else if TetherFrameSource.isSupported {
+            .tether
+        } else {
+            nil
+        }
+        if let live, session.videoSource != live {
+            sourceBeforeLiveTake = session.videoSource
+            selectSource(live)
+        }
+        toggleRecording()
     }
 
     // MARK: The reveal (spec §7)

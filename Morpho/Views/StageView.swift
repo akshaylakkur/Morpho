@@ -219,7 +219,7 @@ private struct StageFeed: View {
                 .foregroundStyle(Theme.iridescent)
                 .symbolEffect(.pulse)
             Text("Camera Not Connected")
-                .font(.system(.headline, design: .rounded))
+                .font(.system(.headline))
                 .foregroundStyle(.white.opacity(0.7))
         }
         .accessibilityElement(children: .combine)

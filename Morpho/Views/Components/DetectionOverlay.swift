@@ -116,7 +116,7 @@ private struct RegionLabel: View {
                 .fill(color)
                 .frame(width: 7, height: 7)
             Text(text.isEmpty ? "…" : text)
-                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .font(.system(.caption).weight(.semibold))
                 .foregroundStyle(.white.opacity(text.isEmpty ? 0.55 : 0.95))
                 .lineLimit(1)
             if let augmentationTitle {

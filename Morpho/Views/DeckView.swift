@@ -136,7 +136,7 @@ struct DeckView: View {
                     // Back to the untouched feed, left of Record.
                     RevertButton()
                     RecordButton(isRecording: session.isRecording) {
-                        engine.toggleRecording()
+                        engine.toggleLiveRecording()
                     }
                 }
             }
@@ -175,7 +175,7 @@ struct DeckView: View {
             Spacer()
 
             RecordButton(isRecording: session.isRecording) {
-                engine.toggleRecording()
+                engine.toggleLiveRecording()
             }
         }
         .padding(.horizontal, 16)

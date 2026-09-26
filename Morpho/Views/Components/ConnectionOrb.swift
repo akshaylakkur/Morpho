@@ -52,19 +52,18 @@ struct ConnectionOrb: View {
 /// Elapsed-time chip shown beside the orb while recording.
 struct SessionTimerChip: View {
     let startedAt: Date
+    var font: Font = .subheadline.weight(.semibold)
 
     var body: some View {
         TimelineView(.periodic(from: startedAt, by: 1)) { context in
             let elapsed = Int(context.date.timeIntervalSince(startedAt))
-            HStack(spacing: 6) {
-                Circle().fill(.red).frame(width: 8, height: 8)
-                Text(String(format: "%d:%02d", elapsed / 60, elapsed % 60))
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .glassEffect(.regular, in: .capsule)
+            // Camera-app style: white HH:MM:SS on a red rounded rectangle.
+            Text(String(format: "%02d:%02d:%02d", elapsed / 3600, elapsed / 60 % 60, elapsed % 60))
+                .font(font.monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.red, in: .rect(cornerRadius: 6))
         }
         .accessibilityLabel("Recording")
     }
