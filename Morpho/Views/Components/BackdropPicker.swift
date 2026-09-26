@@ -14,13 +14,19 @@ struct BackdropPicker: View {
     @Environment(SessionModel.self) private var session
     @Environment(MorphoEngine.self) private var engine
 
+    /// Vertical above Record with names; horizontal (badges only) in the flat-open bar.
+    var axis: Axis = .vertical
+
     var body: some View {
-        VStack(alignment: .trailing, spacing: 10) {
+        let layout = axis == .vertical
+            ? AnyLayout(VStackLayout(alignment: .trailing, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             ForEach(Realm.backdrops) { backdrop in
                 Toggle(isOn: binding(for: backdrop)) {
                     Label(backdrop.name, systemImage: backdrop.symbol)
                 }
-                .toggleStyle(BackdropToggleStyle(accent: backdrop.accent))
+                .toggleStyle(BackdropToggleStyle(accent: backdrop.accent, showsName: axis == .vertical))
                 .accessibilityHint("Swaps the surroundings with Lucy")
             }
         }
@@ -40,6 +46,7 @@ struct BackdropPicker: View {
 /// symbol. The active one glows, gets a white ring, and a bolder name.
 private struct BackdropToggleStyle: ToggleStyle {
     let accent: Color
+    var showsName = true
 
     func makeBody(configuration: Configuration) -> some View {
         let isOn = configuration.isOn
@@ -47,13 +54,15 @@ private struct BackdropToggleStyle: ToggleStyle {
             configuration.isOn.toggle()
         } label: {
             HStack(spacing: 8) {
-                configuration.label
-                    .labelStyle(.titleOnly)
-                    .font(.system(.caption, design: .rounded).weight(isOn ? .bold : .semibold))
-                    .foregroundStyle(.white.opacity(isOn ? 1 : 0.85))
-                    .shadow(color: .black.opacity(0.6), radius: 3)
-                    // The badge below carries the name for VoiceOver.
-                    .accessibilityHidden(true)
+                if showsName {
+                    configuration.label
+                        .labelStyle(.titleOnly)
+                        .font(.system(.caption, design: .rounded).weight(isOn ? .bold : .semibold))
+                        .foregroundStyle(.white.opacity(isOn ? 1 : 0.85))
+                        .shadow(color: .black.opacity(0.6), radius: 3)
+                        // The badge below carries the name for VoiceOver.
+                        .accessibilityHidden(true)
+                }
 
                 configuration.label
                     .labelStyle(.iconOnly)

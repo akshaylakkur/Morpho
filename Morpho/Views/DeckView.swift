@@ -172,7 +172,17 @@ struct DeckView: View {
                 .accessibilityLabel(engine.replay.isPlaying ? "Pause" : "Play")
             }
 
-            Spacer()
+            if !engine.replay.isActive {
+                // Flat open, every control lines up across the one bar.
+                Spacer()
+                LucyLinkChip()
+                Spacer()
+                BackdropPicker(axis: .horizontal)
+                Spacer()
+                RevertButton()
+            } else {
+                Spacer()
+            }
 
             RecordButton(isRecording: session.isRecording) {
                 engine.toggleLiveRecording()
