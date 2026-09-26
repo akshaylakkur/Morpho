@@ -64,7 +64,7 @@ struct ButterflyCurtain: View {
 
                 if let caption {
                     Text(caption)
-                        .font(.system(compact ? .footnote : .subheadline, design: .rounded, weight: .medium))
+                        .font(.system(compact ? .footnote : .subheadline, weight: .medium))
                         .foregroundStyle(.white.opacity(0.65))
                         .position(x: size.width / 2, y: size.height / 2 + wingSize.height * 0.85)
                         .transition(.opacity)

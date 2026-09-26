@@ -33,53 +33,46 @@ struct ScoutView: View {
             .ignoresSafeArea(edges: .vertical)
             .animation(.smooth, value: session.isRecording)
             .toolbar {
-                // Record lives in the system vertical bar as a proper
-                // toolbar item: symbol + title, pinned so it never overflows.
-                ToolbarItem(placement: .topBarPinnedTrailing) {
-                    Button {
-                        if session.isRecording {
-                            engine.toggleRecording()
-                        } else {
+                // The side icons step aside while the recording screen shows.
+                if !session.isRecording {
+                    // Record lives in the system vertical bar as a proper
+                    // toolbar item: symbol + title, pinned so it never overflows.
+                    ToolbarItem(placement: .topBarPinnedTrailing) {
+                        Button("Record", systemImage: "record.circle") {
                             isShowingUnfoldPrompt = true
                         }
-                    } label: {
-                        Label(
-                            session.isRecording ? "Stop" : "Record",
-                            systemImage: session.isRecording ? "stop.circle.fill" : "record.circle"
-                        )
                     }
-                    .tint(session.isRecording ? .red : nil)
-                }
 
-                ToolbarItemGroup {
-                    Button {
-                        engine.flipCamera()
-                    } label: {
-                        Label("Flip Camera", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.camera.fill")
-                    }
-                }
-                .visibilityPriority(.high)
-
-                // Secondary controls live in the system overflow menu.
-                ToolbarOverflowMenu {
-                    Button {
-                        Task { await engine.exportLoopcast() }
-                    } label: {
-                        Label("Loopcast", systemImage: "arrow.trianglehead.2.counterclockwise.rotate.90")
-                    }
-                    Button {
-                        _ = engine.captureStill()
-                    } label: {
-                        Label("Capture Still", systemImage: "camera.shutter.button")
-                    }
-                    if session.activeRealm != nil || session.lastCast != nil {
+                    ToolbarItemGroup {
                         Button {
-                            engine.clearRealm()
+                            engine.flipCamera()
                         } label: {
-                            Label("Clear Realm", systemImage: "arrow.uturn.backward")
+                            Label("Flip Camera", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.camera.fill")
                         }
                     }
-                    sourceMenu
+                    .visibilityPriority(.high)
+
+                    // Secondary controls live in the system overflow menu.
+                    ToolbarOverflowMenu {
+                        Button {
+                            Task { await engine.exportLoopcast() }
+                        } label: {
+                            Label("Loopcast", systemImage: "arrow.trianglehead.2.counterclockwise.rotate.90")
+                        }
+                        Button {
+                            _ = engine.captureStill()
+                        } label: {
+                            Label("Capture Still", systemImage: "camera.shutter.button")
+                        }
+                        if session.activeRealm != nil || session.lastCast != nil {
+                            Button {
+                                engine.clearRealm()
+                            } label: {
+                                Label("Clear Realm", systemImage: "arrow.uturn.backward")
+                            }
+                        }
+                        sourceMenu
+                    }
                 }
             }
             .alert("Open to Record", isPresented: $isShowingUnfoldPrompt) {
@@ -95,20 +88,20 @@ struct ScoutView: View {
         ZStack {
             Color.black
 
-            ButterflyCurtain(
-                phase: .curtain,
-                compact: true,
-                caption: "Recording is in progress",
-                backdrop: .black
-            )
+            VStack(spacing: 14) {
+                ButterflyCurtain(phase: .curtain, backdrop: .black)
+                    .frame(width: 240, height: 200)
 
-            if let startedAt = session.recordingStartedAt {
-                VStack {
-                    Spacer()
-                    SessionTimerChip(startedAt: startedAt)
-                        .padding(.bottom, 24)
+                Text("Recording is in progress")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+
+                if let startedAt = session.recordingStartedAt {
+                    SessionTimerChip(startedAt: startedAt, font: .title3.weight(.semibold))
                 }
             }
+            .padding(.horizontal, 24)
         }
         .ignoresSafeArea()
     }

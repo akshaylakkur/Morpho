@@ -32,7 +32,7 @@ struct IncantationOverlay: View {
     private var liveWords: some View {
         let words = transcript.split(separator: " ").suffix(12)
         return Text(words.joined(separator: " "))
-            .font(.system(.title2, design: .rounded, weight: .semibold))
+            .font(.system(.title2, weight: .semibold))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
             .contentTransition(.numericText())
@@ -51,7 +51,7 @@ struct IncantationOverlay: View {
                 .glassEffect(.regular, in: .capsule)
 
             Text(spec.prompt)
-                .font(.system(.callout, design: .rounded, weight: .medium))
+                .font(.system(.callout, weight: .medium))
                 .foregroundStyle(Theme.iridescent)
                 .multilineTextAlignment(.center)
                 .lineLimit(4)
