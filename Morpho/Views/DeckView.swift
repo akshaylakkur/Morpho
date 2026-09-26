@@ -90,7 +90,7 @@ struct DeckView: View {
             }
             Spacer()
             RecordButton(isRecording: session.isRecording) {
-                engine.toggleRecording()
+                engine.toggleLiveRecording()
             }
         }
         .padding(.horizontal, 24)
@@ -127,7 +127,7 @@ struct DeckView: View {
             Spacer()
 
             RecordButton(isRecording: session.isRecording) {
-                engine.toggleRecording()
+                engine.toggleLiveRecording()
             }
         }
         .padding(.horizontal, 16)

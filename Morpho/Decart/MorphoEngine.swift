@@ -301,6 +301,39 @@ final class MorphoEngine {
         }
     }
 
+    // MARK: Dual-screen recording
+
+    /// The source that was showing before a dual-screen take swapped in the
+    /// live feed; restored when that take stops.
+    private var sourceBeforeLiveTake: VideoSourceKind?
+
+    /// Record on the dual screen: takes are shot from the live feed (the
+    /// tethered iPhone in the simulator, the device camera on hardware),
+    /// never the demo clip. Stopping puts the previous source back.
+    func toggleLiveRecording() {
+        if session.isRecording {
+            toggleRecording()
+            if let previous = sourceBeforeLiveTake {
+                sourceBeforeLiveTake = nil
+                selectSource(previous)
+            }
+            return
+        }
+
+        let live: VideoSourceKind? = if CameraFrameSource.isAvailable {
+            .localCamera
+        } else if TetherFrameSource.isSupported {
+            .tether
+        } else {
+            nil
+        }
+        if let live, session.videoSource != live {
+            sourceBeforeLiveTake = session.videoSource
+            selectSource(live)
+        }
+        toggleRecording()
+    }
+
     // MARK: The reveal (spec §7)
 
     /// The butterfly flies off and the iris opens onto the feed.
