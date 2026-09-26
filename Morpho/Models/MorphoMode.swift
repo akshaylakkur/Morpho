@@ -41,8 +41,11 @@ struct FoldLayout: Equatable {
         let size = proxy.size
 
         guard let division = divisions.first else {
-            // No fold in this scene → we are on the outer display (or a plain iPhone).
-            return FoldLayout(mode: .scout, divisionFrame: nil, occlusionFrames: occlusions.map(\.frame))
+            // No fold region is reported when the inner display is fully open
+            // and flat, so tell the displays apart by width: the inner display
+            // is regular width (Canvas); the outer display is compact (Scout).
+            let mode: MorphoMode = horizontalSizeClass == .regular ? .canvas : .scout
+            return FoldLayout(mode: mode, divisionFrame: nil, occlusionFrames: occlusions.map(\.frame))
         }
 
         // A fold that runs horizontally across the view (wider than tall) is the
