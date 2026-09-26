@@ -11,11 +11,13 @@ import UIKit
 
 struct ReplayPlayerView: UIViewRepresentable {
     let player: AVPlayer
+    /// Fill for the Stage, fit for the viewer page. One player can drive both layers.
+    var gravity: AVLayerVideoGravity = .resizeAspectFill
 
     func makeUIView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
         view.playerLayer.player = player
-        view.playerLayer.videoGravity = .resizeAspectFill
+        view.playerLayer.videoGravity = gravity
         view.backgroundColor = .black
         return view
     }
@@ -23,6 +25,9 @@ struct ReplayPlayerView: UIViewRepresentable {
     func updateUIView(_ uiView: PlayerLayerView, context: Context) {
         if uiView.playerLayer.player !== player {
             uiView.playerLayer.player = player
+        }
+        if uiView.playerLayer.videoGravity != gravity {
+            uiView.playerLayer.videoGravity = gravity
         }
     }
 }

@@ -34,9 +34,9 @@ final class BundledClipSource: VideoFrameSource {
     func start(onFrame: @escaping @MainActor (CGImage) -> Void) {
         guard let url = Self.clipURL else { return }
         let item = AVPlayerItem(url: url)
-        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: CVPixelBufferAttributes(rawAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        ])
+        ]))
         item.add(output)
         let player = AVQueuePlayer()
         looper = AVPlayerLooper(player: player, templateItem: item)
@@ -59,10 +59,14 @@ final class BundledClipSource: VideoFrameSource {
         guard let output, let player else { return nil }
         let time = player.currentTime()
         guard output.hasNewPixelBuffer(forItemTime: time),
-              let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil)
+              let buffer = output.pixelBufferAndDisplayTime(forItemTime: time).pixelBuffer
         else { return nil }
-        let ciImage = CIImage(cvPixelBuffer: buffer)
-        return ciContext.createCGImage(ciImage, from: ciImage.extent)
+        // The output vends a read-only wrapper; Core Image still wants the raw CVPixelBuffer.
+        let ciContext = self.ciContext
+        return buffer.withUnsafeBuffer { pixelBuffer in
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            return ciContext.createCGImage(ciImage, from: ciImage.extent)
+        }
     }
 
     func stop() {

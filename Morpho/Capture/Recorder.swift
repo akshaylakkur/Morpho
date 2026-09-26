@@ -13,8 +13,8 @@ import UIKit
 
 final class Recorder {
     private var writer: AVAssetWriter?
-    private var input: AVAssetWriterInput?
-    private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
+    private var receiver: AVAssetWriterInput.PixelBufferReceiver?
+    private var pool: CVPixelBufferPool?
     private var firstFrameAt: Date?
 
     /// True between `begin` and `finish`.
@@ -31,32 +31,31 @@ final class Recorder {
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
         ])
-        input.expectsMediaDataInRealTime = true
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: width,
-                kCVPixelBufferHeightKey as String: height,
-            ]
-        )
         guard writer.canAdd(input) else { return }
-        writer.add(input)
-        writer.startWriting()
+
+        // Recycled BGRA buffers the size of the stream; each frame is drawn
+        // into one of these before being handed to the writer.
+        var pool: CVPixelBufferPool?
+        CVPixelBufferPoolCreate(nil, nil, [
+            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey: width,
+            kCVPixelBufferHeightKey: height,
+        ] as CFDictionary, &pool)
+        guard let pool else { return }
+
+        // Attaches the input to the writer and vends the receiver we append through.
+        let receiver = writer.inputPixelBufferReceiver(for: input, pixelBufferAttributes: nil)
+        guard (try? writer.start()) != nil else { return }
         writer.startSession(atSourceTime: .zero)
 
         self.writer = writer
-        self.input = input
-        self.adaptor = adaptor
+        self.receiver = receiver
+        self.pool = pool
         self.firstFrameAt = nil
     }
 
     func append(_ frame: CGImage) {
-        guard
-            let input, let adaptor, writer?.status == .writing,
-            input.isReadyForMoreMediaData,
-            let pool = adaptor.pixelBufferPool
-        else { return }
+        guard let receiver, let pool, writer?.status == .writing else { return }
 
         let now = Date.now
         if firstFrameAt == nil { firstFrameAt = now }
@@ -68,7 +67,6 @@ final class Recorder {
         guard let buffer else { return }
 
         CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
         if let context = CGContext(
             data: CVPixelBufferGetBaseAddress(buffer),
             width: CVPixelBufferGetWidth(buffer),
@@ -81,19 +79,23 @@ final class Recorder {
             let rect = CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
             context.draw(frame, in: rect)
         }
-        adaptor.append(buffer, withPresentationTime: time)
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+
+        // Realtime source: if the input isn't ready this returns false and the frame is dropped,
+        // exactly as the old adaptor path did when `isReadyForMoreMediaData` was false.
+        _ = try? receiver.appendImmediately(CVReadOnlyPixelBuffer(unsafeBuffer: buffer), with: time)
     }
 
     func finish(startedAt: Date?) async -> URL? {
-        guard let writer, let input else { return nil }
-        input.markAsFinished()
+        guard let writer, let receiver else { return nil }
+        receiver.finish()
         await writer.finishWriting()
         let url = writer.status == .completed ? writer.outputURL : nil
         // A new recording may have begun while this one was finishing; leave it alone.
         if self.writer === writer {
             self.writer = nil
-            self.input = nil
-            self.adaptor = nil
+            self.receiver = nil
+            self.pool = nil
         }
         return url
     }

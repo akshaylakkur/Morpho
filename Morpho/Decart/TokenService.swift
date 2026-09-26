@@ -9,7 +9,9 @@
 
 import Foundation
 
-struct EphemeralToken: Sendable {
+/// Plain value; opting out of default actor isolation so the `TokenService`
+/// actor can read it without hopping to the main actor.
+nonisolated struct EphemeralToken: Sendable {
     let value: String
     let expiresAt: Date
 

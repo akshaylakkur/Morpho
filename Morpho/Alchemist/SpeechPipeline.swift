@@ -118,8 +118,10 @@ final class SpeechPipeline {
         let micFormat = input.outputFormat(forBus: 0)
         let converter = AVAudioConverter(from: micFormat, to: analyzerFormat)
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: micFormat) { [weak self] buffer, _ in
+        try input.installAudioTap(onBus: 0, bufferSize: 4096, format: micFormat) { [weak self] readOnlyBuffer, _ in
             // Realtime audio thread: meter + convert + hand off, nothing else.
+            // The tap vends a read-only buffer; the converter needs a PCM buffer to pull from.
+            let buffer = AVAudioPCMBuffer(copying: readOnlyBuffer)
             let amplitude = Self.rmsAmplitude(of: buffer)
             Task { @MainActor [weak self] in
                 self?.onAmplitude?(amplitude)

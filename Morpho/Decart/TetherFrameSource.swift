@@ -56,13 +56,14 @@ final class TetherFrameSource: VideoFrameSource {
 
     private let queue = DispatchQueue(label: "morpho.tether", qos: .userInteractive)
     private var connection: NWConnection?
-    private var handler: (@MainActor (CGImage) -> Void)?
+    // Written and read only on `queue`; opting out of main-actor isolation is safe here.
+    nonisolated(unsafe) private var handler: (@MainActor @Sendable (CGImage) -> Void)?
     private var stopped = true
     private var deliveryInFlight = false
     private var lastPayload: Data?
     private static let reconnectDelay: TimeInterval = 1
 
-    func start(onFrame: @escaping @MainActor (CGImage) -> Void) {
+    func start(onFrame: @escaping @MainActor @Sendable (CGImage) -> Void) {
         queue.async {
             self.handler = onFrame
             self.stopped = false

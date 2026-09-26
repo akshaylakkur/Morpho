@@ -66,14 +66,24 @@ when frames return, an armed Stage reopens on its own. A byte-identical
 repeated frame counts as no frame (that's how Continuity Camera holds its
 last picture while paused).
 
+**The lower screen (interim, Camera-app style).** The Deck is being redone
+from scratch. For now it shows a live duplicate of the Stage as the
+viewfinder, the newest take's thumbnail at the bottom-left, and Record at
+the bottom-right — nothing else. The Realm, Voice and Rig shelves, Loopcast,
+Share and the reel strip are gone from the Deck (their engine capabilities
+remain and Scout on the outer display still exposes some of them).
+
 **The Reel and replay.** Stopping Record finalizes the take and files it in
 the Reel (`Documents/Reel`, MP4 + JPEG thumbnail, indexed by `reel.json`,
 persisted across launches). The feed keeps showing but no longer counts.
-Takes appear as thumbnails along the bottom of the Deck; tapping one plays
-it on the Stage and swaps the Deck for the replay controls — Play/Pause,
-Restart, scrubber, Share, Save to Photos, Delete, and Live to return to the
-feed. Files: `Models/Clip.swift`, `Capture/ReelStore.swift`,
-`Capture/ReplayController.swift`, `Views/ReplayDeck.swift`.
+Tapping the thumbnail opens the newest take in an iOS-video-viewer-style
+page on the lower screen: Done (top-left) returns to the camera, the take's
+date and time sit up top, the video plays on black with a tap-to-pause and
+a play/pause scrubber, and Share · Save to Photos · Delete run along the
+bottom. Swipe left/right to move between takes. The Stage above plays the
+same take. Files: `Models/Clip.swift`, `Capture/ReelStore.swift`,
+`Capture/ReplayController.swift`, `Views/ReplayDeck.swift`,
+`Views/Components/RecentTakeButton.swift`.
 
 ## 1. Add the Decart SDK package (one time, in Xcode UI)
 

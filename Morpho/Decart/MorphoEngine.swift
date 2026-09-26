@@ -25,6 +25,9 @@ final class MorphoEngine {
     let recorder = Recorder()
     /// Playback of Reel takes on the Stage (spec §9).
     let replay = ReplayController()
+    /// The Deck's autodetection layer: on-device segmentation of the live feed.
+    /// Driven by the Deck (it runs only while the controller is on screen).
+    let sceneSegmenter = SceneSegmenter()
 
     // Feed liveness (spec §7) is nothing more than "a frame arrived recently".
     // Pause or Disconnect on the phone, a pulled cable, or a stopped relay all
