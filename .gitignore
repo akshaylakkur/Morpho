@@ -1,0 +1,10 @@
+# Secrets never land in git (see STAGING.md)
+Secrets.plist
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Tether helper build products
+Tools/MorphoTether/.build/
